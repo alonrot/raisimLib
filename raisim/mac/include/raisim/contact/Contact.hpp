@@ -88,25 +88,16 @@ class Contact {
   }
 
 public:
-
-  /**
-   * the contact position
-   * @return the contact position
-   */
   [[nodiscard]] const Vec<3> &getPosition() const {
     return position_;
   }
 
-  /**
-   * the contact normal vector pointing to ObjectA
-   * @return frame
-   */
   [[nodiscard]] const Vec<3> &getNormal() const {
     return normal_;
   }
 
   /**
-   * returns a TRANSPOSE of the frame that the impulse is expressed.
+   * treturns a TRANSPOSE of the frame that the impulse is expressed.
    * @return contact frame
    */
   [[nodiscard]] const Mat<3, 3> &getContactFrame() const {
@@ -139,8 +130,6 @@ public:
 
   /**
    * returns the contact index in the contacting (the paired) object in raisim::Object::getContacts
-   * This does not work if the pair body is STATIC because contacts on static bodies are not stored.
-   * First check the pair body type with getPairObjectBodyType
    * @return contact index
    */
   [[nodiscard]] size_t getPairContactIndexInPairObject() const {

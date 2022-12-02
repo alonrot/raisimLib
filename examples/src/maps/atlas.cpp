@@ -45,27 +45,24 @@ int main(int argc, char* argv[]) {
   /// use raisimUnreal to visualize the charts
   auto timeSeries = server.addTimeSeriesGraph("body pos", {"atlas_x", "atlas_y", "atlas_z", "w", "x", "y", "z"}, "time", "pos");
   auto barChart = server.addBarChart("body pos2", {"x", "y", "z"});
-  barChart->setData({0.1f, 0.2f, 0.3f});
+  barChart->setData({0.1, 0.2, 0.3});
 
   server.launchServer();
-  int count = 0;
 
   while (1) {
     raisim::USLEEP(1000);
     atlas[0]->setExternalForce(0, {300,-300,30});
     atlas[0]->setExternalTorque(0, {0,40,0});
     raisim::VecDyn vec(7);
-    if (count++%20==0) {
-      vec[0] = atlas[0]->getGeneralizedCoordinate()[0];
-      vec[1] = atlas[0]->getGeneralizedCoordinate()[1];
-      vec[2] = atlas[0]->getGeneralizedCoordinate()[2];
-      vec[3] = atlas[0]->getGeneralizedCoordinate()[3];
-      vec[4] = atlas[0]->getGeneralizedCoordinate()[4];
-      vec[5] = atlas[0]->getGeneralizedCoordinate()[5];
-      vec[6] = atlas[0]->getGeneralizedCoordinate()[6];
+    vec[0] = atlas[0]->getGeneralizedCoordinate()[0];
+    vec[1] = atlas[0]->getGeneralizedCoordinate()[1];
+    vec[2] = atlas[0]->getGeneralizedCoordinate()[2];
+    vec[3] = atlas[0]->getGeneralizedCoordinate()[3];
+    vec[4] = atlas[0]->getGeneralizedCoordinate()[4];
+    vec[5] = atlas[0]->getGeneralizedCoordinate()[5];
+    vec[6] = atlas[0]->getGeneralizedCoordinate()[6];
 
-      timeSeries->addDataPoints(world.getWorldTime(), vec);
-    }
+    timeSeries->addDataPoints(world.getWorldTime(), vec);
     server.integrateWorldThreadSafe();
   }
 

@@ -424,12 +424,6 @@ class ArticulatedSystem : public Object {
       vecvecCwiseMulThenSub(kd_, gv_, genForce);
       vecvecCwiseMulThenAdd(kd_, uref_, genForce);
     }
-
-    /// enforce joint torque limits
-    for (size_t i = 0; i < dof; i++) {
-      genForce[i] = genForce[i] < tauUpper_[i] ? genForce[i] : tauUpper_[i];
-      genForce[i] = genForce[i] > tauLower_[i] ? genForce[i] : tauLower_[i];
-    }
     return genForce;
   }
 
@@ -441,20 +435,20 @@ class ArticulatedSystem : public Object {
   /**
    * get the mass matrix
    * @return the mass matrix. Check Object/ArticulatedSystem section in the manual */
-  [[nodiscard]] const MatDyn &getMassMatrix() { computeMassMatrix(M_); return M_; }
+  const MatDyn &getMassMatrix() { computeMassMatrix(M_); return M_; }
 
   /**
    * get the coriolis and the gravitational term
    * @param[in] gravity gravitational acceleration. You should get this value from the world.getGravity();
    * @return the coriolis and the gravitational term. Check Object/ArticulatedSystem section in the manual */
-  [[nodiscard]] const VecDyn &getNonlinearities(const Vec<3>& gravity) { computeNonlinearities(gravity, h_); return h_; }
+  const VecDyn &getNonlinearities(const Vec<3>& gravity) { computeNonlinearities(gravity, h_); return h_; }
 
   /**
    * get the inverse mass matrix. Note that this is actually damped inverse.
    * It contains the effect of damping and the spring effects due to the implicit integration.
    * YOU MUST CALL getMassMatrix FIRST BEFORE CALLING THIS METHOD.
    * @return the inverse mass matrix. Check Object/ArticulatedSystem section in the manual */
-  [[nodiscard]] const MatDyn &getInverseMassMatrix() { computeSparseInverse(M_, Minv_); return Minv_; }
+  const MatDyn &getInverseMassMatrix() { computeSparseInverse(M_, Minv_); return Minv_; }
 
   /**
    * get the center of mass of a composite body containing body i and all its children.

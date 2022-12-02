@@ -20,3 +20,15 @@ examples/cmake-build*/*
 **/activation.raisim
 data/*
 **/.DS_Store
+build*/
+raisimGymTorch/data/*
+raisimGymTorch/raisimGymTorch/env/bin/*
+.git_backup
+raisim/linux/lib/raisimpy.cpython-*
+raisim/win32/mt*
+docs/latex/
+
+
+
+
+

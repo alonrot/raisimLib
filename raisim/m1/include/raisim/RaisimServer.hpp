@@ -58,6 +58,7 @@ class RaisimServer final {
  public:
   static constexpr int SEND_BUFFER_SIZE = 33554432;
   static constexpr int MAXIMUM_PACKET_SIZE = 32384;
+  static constexpr int FOOTER_SIZE = sizeof(char);
   static constexpr int RECEIVE_BUFFER_SIZE = 33554432;
 
   enum ClientMessageType : int {
@@ -221,8 +222,6 @@ class RaisimServer final {
       connected_ = client_ != INVALID_SOCKET;
 #endif
       RSWARN_IF(client_ < 0, "Accept failed, errno: " << errno)
-      RSINFO_IF(client_ >= 0, "Connection to "<< client_<<" is established")
-
       clearScene();
     }
   }
@@ -810,8 +809,8 @@ class RaisimServer final {
       int clientRequestSize;
       ClientRequestType requestType;
       rData_ = get(rData_, &clientRequestSize);
-      lockVisualizationServerMutex();
       wireStiffness_ = 0.;
+      lockVisualizationServerMutex();
 
       for (int i=0; i<clientRequestSize; i++) {
         rData_ = get(rData_, &requestType);
@@ -1030,14 +1029,6 @@ class RaisimServer final {
     return select(server_fd_ + 1, &sdset, nullptr, nullptr, &tv) > 0;
   }
 
-  /**
-   * Saves the screenshot (the directory is chosen by the visualizer)
-   */
-  void requestSaveScreenshot() {
-    std::lock_guard<std::mutex> guard(serverMutex_);
-    serverRequest_.push_back(ServerRequestType::GET_SCREEN_SHOT);
-  }
-
  private:
 
   static inline std::string colorToString(const raisim::Vec<4> &vec) {
@@ -1128,7 +1119,6 @@ class RaisimServer final {
     using namespace server;
     auto &objList = world_->getObjList();
     data_ = set(data_, ServerMessageType::UPDATE_ALL);
-    data_ = set(data_, (double) world_->getWorldTime());
     data_ = set(data_, mapName_);
     data_ = set(data_, (uint32_t) (world_->getConfigurationNumber() + visualConfiguration_));
     data_ = set(data_, (uint32_t) (objList.size() +
@@ -1512,6 +1502,7 @@ class RaisimServer final {
     }
   }
 
+
   inline bool receiveData(int seconds) {
     using namespace server;
     int totalDataSize = RECEIVE_BUFFER_SIZE, totalReceivedDataSize = 0, currentReceivedDataSize;
@@ -1625,7 +1616,7 @@ class RaisimServer final {
   int screenShotWidth_, screenShotHeight_;
 
   // version
-  constexpr static int version_ = 10011;
+  constexpr static int version_ = 10010;
 
   // visual tag counter
   uint32_t visTagCounter = 30;

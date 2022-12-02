@@ -4,6 +4,7 @@ RaisimUnreal
 
 Introduction
 =====================
+
 RaisimUnreal is a visualization client, just like RaisimUnity.
 The simulation process should launch (``raisim::RaisimServer::launchServer``) a RaisimServer in order to communicate with RaisimUnreal.
 Once the server is running, RaisimUnreal can connect to it and obtain visualization information.
@@ -48,57 +49,6 @@ I prefer to use it for visualization of final policies after training.
 To use RaisimUnreal, you do not have to commit anything.
 From the server side, it is absolutely the same as raisimUnity.
 All you have to do is to create the server instance (``raisim::RaisimServer``) and launch it (check the examples in ``examples/server``).
-
-Why RaisimUnreal over other alternatives?
-=============================================
-
-There are a few features only available in raisimUnreal.
-
-1. Add/remove objects dynamically in the visualizer (object spawner menu and ``del``)
-2. Measure distance (``alt``)
-3. Apply external force in the visualizer (``shift``)
-4. Visualize maps (``raisim::RaisimServer::setMap``)
-
-You can find further descriptions of the features on this page.
-In addition, RaisimUnreal has the highest visual fidelity.
-
-Prerequisites
-========================
-
-* Make sure that you have a vulkan-supported GPU
-* In Linux, install vulkan libraries following the link here: https://linuxconfig.org/install-and-test-vulkan-on-linux
-* In Windows, an window will pop up to guide you for installation of dependencies if you run the app.
-* **Update your GPU driver. Use either the version recommended by pytorch or the latest one**
-
-Give a permission to run the app
-====================================
-Your OS will mark this app malicious because it does not know who created it.
-You can allow OS to run this app in the following ways
-
-Linux
-***********
-Open a terminal, go to the ``RaisimUnity/linux directory`` and type
-
-.. code-block:: c
-
-    chmod +x ./raisimUnity.x86_64
-
-Windows
-**************
-Double click the app, press "run app anyway"
-
-Requirements
-==========================
-
-Windows
-*********************
-If you run the raisimUnreal app, it will guide you for installation of dependencies.
-
-Linux
-*********************
-* Ubuntu 20.04 or higher (18.04 also works but it will be painful to get all package versions right)
-* Vulkan: Follow the instructions in this link https://linuxconfig.org/install-and-test-vulkan-on-linux
-* Latest graphics driver. If you use pytorch, use the driver version that Cuda installs. (The driver will be installed if you follow their instructions.). Otherwise, use the latest version.
 
 User Interface
 ==========================
@@ -171,10 +121,6 @@ Currently, the following maps are available.
 .. image:: ../image/rsu_maps.png
   :alt: rsu_maps
   :width: 1080
-
-You can purchase a custom map.
-If you send a description of the site and necessary pictures, we will send you a quote.
-Note that the map can be as good as the data you provide.
 
 Weather
 ====================

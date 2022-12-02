@@ -40,6 +40,14 @@ PYBIND11_MODULE(RAISIMGYM_TORCH_ENV_NAME, m) {
     .def("curriculumUpdate", &VectorizedEnvironment<ENVIRONMENT>::curriculumUpdate)
     .def("getObStatistics", &VectorizedEnvironment<ENVIRONMENT>::getObStatistics)
     .def("setObStatistics", &VectorizedEnvironment<ENVIRONMENT>::setObStatistics)
+
+    // // amarco added:
+    // .def("get_nr_of_times_integration_is_called_inside_step_for_the_same_applied_action", &VectorizedEnvironment<ENVIRONMENT>::get_nr_of_times_integration_is_called_inside_step_for_the_same_applied_action)    
+    // .def("updateObservation", &VectorizedEnvironment<ENVIRONMENT>::updateObservation)
+    // .def("setPdTarget_from_commanded_action", &VectorizedEnvironment<ENVIRONMENT>::setPdTarget_from_commanded_action)
+    // .def("step_integrate_once", &VectorizedEnvironment<ENVIRONMENT>::step_integrate_once)
+    // .def("get_latest_rewards", &VectorizedEnvironment<ENVIRONMENT>::get_latest_rewards)
+
     .def(py::pickle(
         [](const VectorizedEnvironment<ENVIRONMENT> &p) { // __getstate__ --> Pickling to Python
             /* Return a tuple that fully encodes the state of the object */

@@ -24,8 +24,16 @@ ENDMACRO()
 ####################
 set(Dependencies)
 
-add_subdirectory(thirdParty/pybind11 pybind11)
-find_package(Eigen3 CONFIG REQUIRED)
+# amarco: had to modify this file following https://github.com/raisimTech/raisimLib/issues/221 | Solution by EasyPaperSniper
+
+
+set(OPENMP_INCLUDE_DIRS "/usr/local/Cellar/libomp/14.0.0/include") # amarco added
+set(OpenMP_C_FLAGS " -Xpreprocessor -fopenmp -lomp -lgomp ") # amarco added
+set(OpenMP_CXX_FLAGS " -Xpreprocessor -fopenmp") # amarco added
+
+add_subdirectory(../thirdParty/pybind11 pybind11)
+find_package(Eigen3 CONFIG REQUIRED) # This can't find the thirdParty/Eigen3 files. I installed them separately; needed version 3.3.9
+find_package(OpenMP REQUIRED) # amarco added
 
 if (APPLE)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
@@ -59,7 +67,7 @@ elseif(APPLE)
     list(APPEND CMAKE_PREFIX_PATH ../raisim/${RAISIM_OS})
 elseif(WIN32)
     set(RAISIM_OS win32)
-    list(APPEND CMAKE_PREFIX_PATH ../raisim/${RAISIM_OS})
+    list(APPEND CMAKE_PREFIX_PATH ../raisim/${RAISIM_OS}/mt_release)
     list(APPEND CMAKE_PREFIX_PATH ../thirdParty)
     list(APPEND Dependencies Ws2_32)
     set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE ${CMAKE_CURRENT_SOURCE_DIR}/raisimGymTorch/env/bin)
@@ -78,8 +86,23 @@ set(RAISIMGYM_ENV_DIR ${CMAKE_CURRENT_SOURCE_DIR}/raisimGymTorch/env/envs)
 ######## Env ##########
 FOREACH(subdir ${SUBDIRS})
     pybind11_add_module(${subdir} raisimGymTorch/env/raisim_gym.cpp raisimGymTorch/env/Yaml.cpp)
-    target_link_libraries(${subdir} PRIVATE raisim::raisim ${Dependencies})
-    target_include_directories(${subdir} PUBLIC ${EIGEN3_INCLUDE_DIRS} ${RAISIMGYM_ENV_DIR}/${subdir} ${CMAKE_CURRENT_SOURCE_DIR}/raisimGymTorch/env)
+
+    # amarco (for ubuntu): Linking against unitree_legged_sdk_from_inside_robot
+#     link_directories(lib /usr/local/lib /home/ubuntu/mounted_home/work/code_projects_WIP/unitree_legged_sdk_from_inside_robot/lib)
+#     add_compile_options(-std=c++11) # amarco: avoid this because we need c++14
+
+
+    target_link_libraries(${subdir} PRIVATE raisim::raisim ${Dependencies}) # original
+
+    # Linking against unitree_legged_sdk_from_inside_robot
+#     target_link_libraries(${subdir} PRIVATE raisim::raisim ${Dependencies} -pthread libunitree_legged_sdk_amd64.so lcm) # amarco (mac)
+#     target_link_libraries(${subdir} PRIVATE raisim::raisim ${Dependencies} -pthread libunitree_legged_sdk_arm64.so lcm) # amarco (ubuntu)
+#     target_include_directories(${subdir} PUBLIC ${EIGEN3_INCLUDE_DIRS} ${RAISIMGYM_ENV_DIR}/${subdir} ${CMAKE_CURRENT_SOURCE_DIR}/raisimGymTorch/env) # original
+    target_include_directories(${subdir} PUBLIC ${EIGEN3_INCLUDE_DIRS} ${OPENMP_INCLUDE_DIRS} ${RAISIMGYM_ENV_DIR}/${subdir} ${CMAKE_CURRENT_SOURCE_DIR}/raisimGymTorch/env) # amarco added
+#     target_include_directories(${subdir} PUBLIC ${EIGEN3_INCLUDE_DIRS} ${OPENMP_INCLUDE_DIRS} ${RAISIMGYM_ENV_DIR}/${subdir} ${CMAKE_CURRENT_SOURCE_DIR}/raisimGymTorch/env /Users/alonrot/work/code_projects_WIP/unitree_legged_sdk_from_inside_robot/include /usr/local/include/lcm) # amarco added
+#     target_include_directories(${subdir} PUBLIC ${EIGEN3_INCLUDE_DIRS} ${OPENMP_INCLUDE_DIRS} ${RAISIMGYM_ENV_DIR}/${subdir} ${CMAKE_CURRENT_SOURCE_DIR}/raisimGymTorch/env /Users/alonrot/work/code_projects_WIP/unitree_legged_sdk_from_inside_robot/include /usr/local/include/lcm) # amarco added
+#     target_include_directories(${subdir} PUBLIC ${EIGEN3_INCLUDE_DIRS} ${OPENMP_INCLUDE_DIRS} ${RAISIMGYM_ENV_DIR}/${subdir} ${CMAKE_CURRENT_SOURCE_DIR}/raisimGymTorch/env /home/ubuntu/mounted_home/work/code_projects_WIP/unitree_legged_sdk_from_inside_robot/include /usr/local/include/lcm) # amarco added (ubuntu VM)
+
     target_compile_options(${subdir} PRIVATE -fPIC -O3 -flto -mno-avx2)
     target_compile_definitions(${subdir} PRIVATE "-DRAISIMGYM_TORCH_ENV_NAME=${subdir}")
     target_compile_definitions(${subdir} PRIVATE "$<$<CONFIG:Release>:EIGEN_NO_DEBUG>")
@@ -99,7 +122,8 @@ FOREACH(subdir ${SUBDIRS})
         message("[RAISIM_GYM] BUILDING THE DEBUG APP for ${subdir}")
         add_executable(${subdir}_debug_app raisimGymTorch/env/debug_app.cpp raisimGymTorch/env/Yaml.cpp)
         target_link_libraries(${subdir}_debug_app PRIVATE raisim::raisim)
-        target_include_directories(${subdir}_debug_app PUBLIC raisimGymTorch/env/envs/${subdir} ${EIGEN3_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR}/raisimGymTorch/env)
+        # target_include_directories(${subdir}_debug_app PUBLIC raisimGymTorch/env/envs/${subdir} ${EIGEN3_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR}/raisimGymTorch/env) # amarco commented out
+        target_include_directories(${subdir}_debug_app PUBLIC raisimGymTorch/env/envs/${subdir} ${EIGEN3_INCLUDE_DIRS} ${OPENMP_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR}/raisimGymTorch/env) # amarco added
         if(WIN32)
             target_link_libraries(${subdir}_debug_app PRIVATE Ws2_32)
         else()

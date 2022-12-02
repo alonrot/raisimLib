@@ -58,6 +58,7 @@ class RaisimServer final {
  public:
   static constexpr int SEND_BUFFER_SIZE = 33554432;
   static constexpr int MAXIMUM_PACKET_SIZE = 32384;
+  static constexpr int FOOTER_SIZE = sizeof(char);
   static constexpr int RECEIVE_BUFFER_SIZE = 33554432;
 
   enum ClientMessageType : int {
@@ -221,8 +222,6 @@ class RaisimServer final {
       connected_ = client_ != INVALID_SOCKET;
 #endif
       RSWARN_IF(client_ < 0, "Accept failed, errno: " << errno)
-      RSINFO_IF(client_ >= 0, "Connection to "<< client_<<" is established")
-
       clearScene();
     }
   }
@@ -1128,7 +1127,6 @@ class RaisimServer final {
     using namespace server;
     auto &objList = world_->getObjList();
     data_ = set(data_, ServerMessageType::UPDATE_ALL);
-    data_ = set(data_, (double) world_->getWorldTime());
     data_ = set(data_, mapName_);
     data_ = set(data_, (uint32_t) (world_->getConfigurationNumber() + visualConfiguration_));
     data_ = set(data_, (uint32_t) (objList.size() +
@@ -1625,7 +1623,7 @@ class RaisimServer final {
   int screenShotWidth_, screenShotHeight_;
 
   // version
-  constexpr static int version_ = 10011;
+  constexpr static int version_ = 10010;
 
   // visual tag counter
   uint32_t visTagCounter = 30;
