@@ -191,12 +191,16 @@ class ENVIRONMENT : public RaisimGymEnv {
   inline float get_latest_rewards(void){
 
     // Reward velocity tracking:
-    float sigma_tracking = 1.0;
+    float sigma_tracking = 0.25;
     Eigen::Vector2d vel_body_lin_xy_des;
+    vel_body_lin_xy_des << 0.5, 0.0; // action_std = 0.5
+    
+    // Past trials
     // vel_body_lin_xy_des << 1.0, 0.0; // 2022-12-07-09-57-32 ~1000 epochs, walks forward, but ridoculously small steps; action_std = 0.2;
-    vel_body_lin_xy_des << 0.25, 0.0; // _____ action_std = 0.5;
+    // vel_body_lin_xy_des << 0.25, 0.0; // 2022-12-07-10-40-31 ~1500 epochs action_std = 0.5, walks forward but dragging feet and, not nice
     // vel_body_lin_xy_des << 0.0, 1.0; // 2022-12-07-09-28-02 -> ~1000 epochs, was walking laterally; action_std = 0.2;
 
+    // Reward linear body velocity:
     float error_vel_lin_tracking = (vel_body_lin_xy_des-bodyLinearVel_.head(2)).squaredNorm();
     rewards_.record("vel_body_tracking_error", exp(-error_vel_lin_tracking/sigma_tracking));
 
@@ -212,10 +216,6 @@ class ENVIRONMENT : public RaisimGymEnv {
 
     // Penalize roll and pitch:
     rewards_.record("vel_ang_xy", (bodyAngularVel_.head(2)).squaredNorm() );
-
-    // rewards_.record("forwardVel", std::min(4.0, bodyLinearVel_[0])); // Saturate velocity
-    // rewards_.record("lateralVel", std::min(2.0, bodyLinearVel_[0])); // amarco: original
-    // rewards_.record("com_y", pow(gc_[1],2.0)); // amarco: added; pow(base,exponent), https://cplusplus.com/reference/cmath/pow/
 
     return rewards_.sum();
   }
