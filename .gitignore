@@ -27,8 +27,5 @@ raisimGymTorch/raisimGymTorch/env/bin/*
 raisim/linux/lib/raisimpy.cpython-*
 raisim/win32/mt*
 docs/latex/
-
-
-
-
+raisimGymTorch/raisimGymTorch/env/envs/rsg_go1/*.mov
 

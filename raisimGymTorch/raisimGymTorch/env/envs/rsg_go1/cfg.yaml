@@ -16,13 +16,32 @@ environment:
   #     coeff: 0.3
   #   torque:
   #     coeff: -4e-5
+  # reward:
+  #   forwardVel:
+  #     coeff: 0.5
+  #   torque:
+  #     coeff: -4e-7
+  #   lateralVel:
+  #     coeff: -1e-4
+  
+  # reward:
+  #   forwardVel:
+  #     coeff: 0.5
+  #   torque:
+  #     coeff: -4e-7
+  #   lateralVel:
+  #     coeff: -1e-4
   reward:
-    forwardVel:
-      coeff: 0.5
+    vel_body_tracking_error:
+      coeff: 2.0
+    vel_ang_tracking_error:
+      coeff: 1.0
     torque:
       coeff: -4e-7
-    lateralVel:
-      coeff: -1e-4
+    vel_body_lin_z:
+      coeff: -2.0
+    vel_ang_xy:
+      coeff: -0.05
 
 
 # amarco

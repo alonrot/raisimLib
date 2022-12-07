@@ -78,7 +78,7 @@ class ENVIRONMENT : public RaisimGymEnv {
     /// set pd gains
     Eigen::VectorXd jointPgain(gvDim_), jointDgain(gvDim_);
     jointPgain.setZero(); jointPgain.tail(nJoints_).setConstant(50.0);
-    jointDgain.setZero(); jointDgain.tail(nJoints_).setConstant(0.2);
+    jointDgain.setZero(); jointDgain.tail(nJoints_).setConstant(2.0);
     go1->setPdGains(jointPgain, jointDgain);
     go1->setGeneralizedForce(Eigen::VectorXd::Zero(gvDim_));
 
@@ -116,7 +116,8 @@ class ENVIRONMENT : public RaisimGymEnv {
 
 
     double action_std;
-    action_std = 0.01;
+    // action_std = 0.01; // before changing reward function
+    action_std = 0.5;
 
     // actionStd_.setConstant(0.3); // Original
     // actionStd_.setConstant(1.0); // amarco
@@ -147,6 +148,13 @@ class ENVIRONMENT : public RaisimGymEnv {
 
   void reset() final {
     go1->setState(gc_init_, gv_init_);
+
+    // std::cout << "We are resetting!\n";
+    // std::cout << "Initial position:\n";
+    // std::cout << gc_init_.tail(12);
+
+    // std::cout << "Initial velocity:\n";
+    // std::cout << gv_init_.tail(12);
 
     // // amarco: possibility for making the robot wait a bit before moving:
     // for(int i=0; i< 100; i++){
@@ -179,13 +187,38 @@ class ENVIRONMENT : public RaisimGymEnv {
 
   // }
 
-  // // amarco: added for calling it inside step, and exposing it to python
-  // inline void get_latest_rewards(void){
-  //   rewards_.record("torque", go1->getGeneralizedForce().squaredNorm());
-  //   rewards_.record("forwardVel", std::min(4.0, bodyLinearVel_[0])); // Saturate velocity
+  // amarco: added for calling it inside step, and exposing it to python
+  inline float get_latest_rewards(void){
 
-  //   return rewards_.sum();
-  // }
+    // Reward velocity tracking:
+    float sigma_tracking = 1.0;
+    Eigen::Vector2d vel_body_lin_xy_des;
+    // vel_body_lin_xy_des << 1.0, 0.0; // 2022-12-07-09-57-32 ~1000 epochs, walks forward, but ridoculously small steps; action_std = 0.2;
+    vel_body_lin_xy_des << 0.25, 0.0; // _____ action_std = 0.5;
+    // vel_body_lin_xy_des << 0.0, 1.0; // 2022-12-07-09-28-02 -> ~1000 epochs, was walking laterally; action_std = 0.2;
+
+    float error_vel_lin_tracking = (vel_body_lin_xy_des-bodyLinearVel_.head(2)).squaredNorm();
+    rewards_.record("vel_body_tracking_error", exp(-error_vel_lin_tracking/sigma_tracking));
+
+    // Reward tracking angular velocity:
+    float error_vel_ang_tracking = pow(0.0-bodyAngularVel_[2],2.0);
+    rewards_.record("vel_ang_tracking_error", exp(-error_vel_ang_tracking/sigma_tracking));
+
+    // Penalize torque:
+    rewards_.record("torque", go1->getGeneralizedForce().squaredNorm());
+
+    // Penalize vertical velocity:
+    rewards_.record("vel_body_lin_z", pow(bodyLinearVel_[2],2.0));
+
+    // Penalize roll and pitch:
+    rewards_.record("vel_ang_xy", (bodyAngularVel_.head(2)).squaredNorm() );
+
+    // rewards_.record("forwardVel", std::min(4.0, bodyLinearVel_[0])); // Saturate velocity
+    // rewards_.record("lateralVel", std::min(2.0, bodyLinearVel_[0])); // amarco: original
+    // rewards_.record("com_y", pow(gc_[1],2.0)); // amarco: added; pow(base,exponent), https://cplusplus.com/reference/cmath/pow/
+
+    return rewards_.sum();
+  }
 
 
   // // amarco: modified step function
@@ -232,16 +265,9 @@ class ENVIRONMENT : public RaisimGymEnv {
 
     updateObservation();
 
-    rewards_.record("torque", go1->getGeneralizedForce().squaredNorm());
-    // rewards_.record("forwardVel", std::min(4.0, bodyLinearVel_[0])); // amarco: original
-    rewards_.record("forwardVel", std::min(2.0, bodyLinearVel_[0])); // amarco: original
-
-    rewards_.record("lateralVel", std::min(2.0, bodyLinearVel_[0])); // amarco: original
-
-    // rewards_.record("com_y", pow(gc_[1],2.0)); // amarco: added; pow(base,exponent), https://cplusplus.com/reference/cmath/pow/
-
-    return rewards_.sum();
+    return get_latest_rewards();
   }
+
 
   void updateObservation() {
     go1->getState(gc_, gv_);
