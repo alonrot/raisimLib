@@ -83,9 +83,14 @@ class ENVIRONMENT : public RaisimGymEnv {
     this->pos_joint_lim_lower << -1.047, -0.663, -2.721, -1.047, -0.663, -2.721, -1.047, -0.663, -2.721, -1.047, -0.663, -2.721;
 
 
+    // Eigen::VectorXd gc_tmp; gc_tmp.setZero(19);
+    // gc_tmp << 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0;
+    // std::cout << "gc_tmp(Eigen::seqN(7,4,3)): " << gc_tmp(Eigen::seqN(7,4,3)) << "\n";
+
+
     /// set pd gains
     Eigen::VectorXd jointPgain(gvDim_), jointDgain(gvDim_);
-    jointPgain.setZero(); jointPgain.tail(nJoints_).setConstant(50.0);
+    jointPgain.setZero(); jointPgain.tail(nJoints_).setConstant(40.0);
     jointDgain.setZero(); jointDgain.tail(nJoints_).setConstant(2.0);
     go1->setPdGains(jointPgain, jointDgain);
     go1->setGeneralizedForce(Eigen::VectorXd::Zero(gvDim_));
@@ -94,10 +99,11 @@ class ENVIRONMENT : public RaisimGymEnv {
     // body height (1) + body orientation (3) + joint angles (12) + body linear velocty (3) + body angular velocity (3) + joint velocity (12) = 34
     obDim_ = 34;
     std::cout << "obDim_: " + std::to_string(obDim_) + "\n";
-    actionDim_ = nJoints_;
-    // actionDim_ = 6;
-    actionMean_.setZero(actionDim_);
-    actionStd_.setZero(actionDim_);
+    // actionDim_ = nJoints_;
+    // actionDim_ = 4;
+    actionDim_ = 6;
+    actionMean_.setZero(nJoints_);
+    actionStd_.setZero(nJoints_);
     obDouble_.setZero(obDim_);
 
     // float action_std = cfg["policy"]["action_std"].As<float>();
@@ -128,7 +134,7 @@ class ENVIRONMENT : public RaisimGymEnv {
 
     double action_std;
     // action_std = 0.01; // before changing reward function
-    action_std = 0.5;
+    action_std = 0.75;
 
     // actionStd_.setConstant(0.3); // Original
     // actionStd_.setConstant(1.0); // amarco
@@ -153,7 +159,7 @@ class ENVIRONMENT : public RaisimGymEnv {
     // constexpr double go1_Thigh_min = -0.663;   // unit:radian ( = -38  degree)
     // constexpr double go1_Calf_max  = -0.837;   // unit:radian ( = -48  degree)
     // constexpr double go1_Calf_min  = -2.721;   // unit:radian ( = -156 degree)
-    this->action_lim = 2.0;
+    this->action_lim = 5.0;
 
 
 
@@ -174,6 +180,9 @@ class ENVIRONMENT : public RaisimGymEnv {
       server_->launchServer();
       server_->focusOn(go1);
     }
+
+    trying_out_some_stuff();
+
   }
 
   void init() final { }
@@ -219,6 +228,57 @@ class ENVIRONMENT : public RaisimGymEnv {
 
   // }
 
+
+
+inline void trying_out_some_stuff(void){
+
+  /// Let's check all contact impulses acting on "LF_SHANK"
+  auto footIndex = go1->getBodyIdx("FR_calf");
+  // std::cout << "footIndex: " << footIndex << "\n";
+
+  /// for all contacts on the robot, check ...
+  for(auto& contact: go1->getContacts()) {
+    
+    if (contact.skip())
+      continue; /// if the contact is internal, one contact point is set to 'skip'
+    
+    if ( footIndex == contact.getlocalBodyIndex() ) {
+    
+      // std::cout << "Contact impulse in the contact frame, size: " << contact.getImpulse().e().size() << std::endl;
+      // std::cout << "Contact impulse in the contact frame: " << contact.getImpulse().e() << std::endl;
+      /// the impulse is acting from objectB to objectA. You can check if this object is objectA or B by
+    
+      std::cout << "is ObjectA: " << contact.isObjectA() << std::endl;
+      // std::cout << "Contact frame: \n" << contact.getContactFrame().e().transpose() << std::endl;
+      /// contact frame is transposed.
+    
+      // std::cout << "Contact impulse in the world frame: " << contact.getContactFrame().e().transpose() * contact.getImpulse().e() << std::endl;
+      // std::cout << "Contact Normal in the world frame: " << contact.getNormal().e().transpose() << std::endl;
+      // std::cout << "Contact position in the world frame: " << contact.getPosition().e().transpose() << std::endl;
+      std::cout << "It collides with: " << world_->getObject(contact.getPairObjectIndex()) << std::endl;
+    
+      // if (contact.getPairContactIndexInPairObject() != raisim::BodyType::STATIC) {
+      //   /// Static objects do not have Contacts store. So you must check if the pair object is static
+      //   /// This saves computation in raisim
+      //   world_->getObject(contact.getPairObjectIndex())->getContacts(); /// You can use the same methods on the pair object
+      // }
+    
+    
+    }
+  }
+
+}
+
+
+
+
+
+
+
+
+
+
+
   // amarco: added for calling it inside step, and exposing it to python
   inline float get_latest_rewards(void){
 
@@ -231,6 +291,14 @@ class ENVIRONMENT : public RaisimGymEnv {
     // vel_body_lin_xy_des << 1.0, 0.0; // 2022-12-07-09-57-32 ~1000 epochs, walks forward, but ridoculously small steps; action_std = 0.2;
     // vel_body_lin_xy_des << 0.25, 0.0; // 2022-12-07-10-40-31 ~1500 epochs action_std = 0.5, walks forward but dragging feet and, not nice
     // vel_body_lin_xy_des << 0.0, 1.0; // 2022-12-07-09-28-02 -> ~1000 epochs, was walking laterally; action_std = 0.2;
+
+    // 2022-12-07-20-06-57 -> Better rewqrd funcrion, walks vibrating...
+
+    // 2022-12-08-08-38-21 -> Better rewqrd funcrion, walks vibrating...
+
+    // 2022-12-08-09-25-39 -> Better rewqrd funcrion, walks vibrating...
+
+    // 2022-12-08-10-48-31 -> Same as above; the robot sort of walks, but sliding the feet
 
     // Reward linear body velocity:
     float error_vel_lin_tracking = (vel_body_lin_xy_des-bodyLinearVel_.head(2)).squaredNorm();
@@ -259,7 +327,10 @@ class ENVIRONMENT : public RaisimGymEnv {
 
     // Penalize hip joints positions, they shouldn't be moving too much for walking on a flat floor
     Eigen::Vector4d pos_hips_des; pos_hips_des << 0.0136, -0.0118, 0.0105, -0.0102;
-    rewards_.record("pos_hips_des", (pos_hips_des-gc_(Eigen::seq(7+2,4,3))).squaredNorm());
+    rewards_.record("pos_hips_des", (pos_hips_des-gc_(Eigen::seqN(7,4,3))).squaredNorm());
+
+    // Eigen::VectorXd gc_tmp; gc_tmp << 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18;
+    // std::cout << "gc_tmp(Eigen::seqN(7,4,3)): " << gc_tmp(Eigen::seqN(7,4,3)) << "\n";
 
 
     // Penalize hip joints velocities: What are the indices for the hips?
@@ -273,7 +344,7 @@ class ENVIRONMENT : public RaisimGymEnv {
     // cwiseMin(action_lim).cwiseMax(-action_lim);
 
     // Penalize jumps in consecutive actions:
-    rewards_.record("action_rate", (this->action_curr.head(6) - this->action_last.head(6)).squaredNorm());
+    rewards_.record("action_rate", (this->action_curr - this->action_last).squaredNorm());
     for(int ii; ii < this->action_last.size(); ii++){
       this->action_last[ii] = this->action_curr[ii];
     }
@@ -304,6 +375,8 @@ class ENVIRONMENT : public RaisimGymEnv {
   // amarco: original step function (replaced by the above function; it does exactly the same)
   float step(const Eigen::Ref<EigenVec>& action) final {
 
+    trying_out_some_stuff();
+
     // std::cout << "action.size(): " << action.size() << "\n";
 
     // std::cout << "Before:\n";
@@ -328,29 +401,52 @@ class ENVIRONMENT : public RaisimGymEnv {
 
 
     // Couple:
-    Eigen::VectorXd pos_joint_des;
-    pos_joint_des.setZero(this->nJoints_);
-    pos_joint_des[0] = this->action_clipped[0];
-    pos_joint_des[1] = this->action_clipped[1];
-    pos_joint_des[2] = this->action_clipped[2];
+    Eigen::VectorXd action_des;
+    action_des.setZero(this->nJoints_);
+    action_des[0] = this->action_clipped[0];
+    action_des[1] = this->action_clipped[1];
+    action_des[2] = this->action_clipped[2];
 
-    pos_joint_des[9] = -this->action_clipped[0];
-    pos_joint_des[10] = this->action_clipped[1];
-    pos_joint_des[11] = this->action_clipped[2];
+    action_des[9] = -this->action_clipped[0];
+    action_des[10] = this->action_clipped[1];
+    action_des[11] = this->action_clipped[2];
 
-    pos_joint_des[3] = -this->action_clipped[3];
-    pos_joint_des[4] = this->action_clipped[4];
-    pos_joint_des[5] = this->action_clipped[5];
+    action_des[3] = -this->action_clipped[3];
+    action_des[4] = this->action_clipped[4];
+    action_des[5] = this->action_clipped[5];
 
-    pos_joint_des[6] = this->action_clipped[3];
-    pos_joint_des[7] = this->action_clipped[4];
-    pos_joint_des[8] = this->action_clipped[5];
+    action_des[6] = this->action_clipped[3];
+    action_des[7] = this->action_clipped[4];
+    action_des[8] = this->action_clipped[5];
+
+
+    // // Couple:
+    // Eigen::VectorXd action_des;
+    // action_des.setZero(this->nJoints_);
+    // // 0.0136, -0.0118, 0.0105, -0.0102;
+    // action_des[0] = 0.0; // By setting zero here, we'll be applying just the initial position as desired joint position
+    // action_des[1] = this->action_clipped[0];
+    // action_des[2] = this->action_clipped[1];
+
+    // action_des[9] = 0.0;
+    // action_des[10] = this->action_clipped[0];
+    // action_des[11] = this->action_clipped[1];
+
+    // action_des[3] = 0.0;
+    // action_des[4] = this->action_clipped[2];
+    // action_des[5] = this->action_clipped[3];
+
+    // action_des[6] = 0.0;
+    // action_des[7] = this->action_clipped[2];
+    // action_des[8] = this->action_clipped[3];
+
+
 
     
     /// action scaling
     // pTarget12_ = action.cast<double>(); // original
     // pTarget12_ = this->action_clipped.cast<double>(); // amarco
-    pTarget12_ = pos_joint_des.cast<double>(); // amarco
+    pTarget12_ = action_des.cast<double>(); // amarco
     pTarget12_ = pTarget12_.cwiseProduct(actionStd_); // amarco: element-wise product; https://eigen.tuxfamily.org/dox/group__TutorialArrayClass.html
     pTarget12_ += actionMean_;
     pTarget_.tail(nJoints_) = pTarget12_;
@@ -366,6 +462,7 @@ class ENVIRONMENT : public RaisimGymEnv {
     // std::cout << "control_dt_: " + std::to_string(control_dt_) + "\n";
     // std::cout << "simulation_dt_: " + std::to_string(simulation_dt_) + "\n";
 
+    // integration_steps_ = 1;
     for(int i=0; i< integration_steps_; i++){
       if(server_) server_->lockVisualizationServerMutex();
       world_->integrate();

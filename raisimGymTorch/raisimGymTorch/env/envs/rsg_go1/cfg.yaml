@@ -8,7 +8,7 @@ environment:
   # eval_every_n: 200 # original
   eval_every_n: 100
   num_threads: 30 # this is not used for anything in the code
-  simulation_dt: 0.0025 # seconds
+  simulation_dt: 0.002 # seconds
   control_dt: 0.01 # seconds
   max_time: 4.0 # seconds
   # reward:
@@ -43,18 +43,18 @@ environment:
     vel_ang_xy:
       coeff: -0.05
     height_body_tracking_error:
-      coeff: 0.50
+      coeff: 0.75
     pos_hips_des:
       coeff: -1.0
     action_rate:
-      coeff: -0.01
+      coeff: -0.001 # this kind of worked...
     pos_joint_off_limits:
       coeff: -0.0
 
 
-# amarco
-policy:
-  action_std: 0.01 # q_des = q_init + action_std * action
+# # amarco
+# policy:
+#   action_std: 0.01 # q_des = q_init + action_std * action
 
 trial: "hole"
 

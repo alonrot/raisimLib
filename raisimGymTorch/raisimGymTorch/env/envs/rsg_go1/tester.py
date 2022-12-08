@@ -79,8 +79,9 @@ max_steps = 600
 
 # integration_steps = env.wrapper.get_nr_of_times_integration_is_called_inside_step_for_the_same_applied_action()
 time_sleep = cfg['environment']['control_dt']
+# time_sleep = cfg['environment']['simulation_dt']
 
-time2sleep_for_slow_visualization = 0.5
+time2sleep_for_slow_visualization = 0.1
 # time2sleep_for_slow_visualization = 0.0
 
 # dones = False
@@ -108,8 +109,13 @@ for step in range(max_steps):
     #         time.sleep(time_sleep)
     # else:
 
+    # for ii in range(4):
+    #     reward_ll, dones = env.step(action_ll.cpu().detach().numpy())
+    #     time.sleep(time_sleep)
+
     reward_ll, dones = env.step(action_ll.cpu().detach().numpy())
     time.sleep(time_sleep)
+    
 
     reward_ll_sum = reward_ll_sum + reward_ll[0]
     if dones or step == max_steps - 1:
