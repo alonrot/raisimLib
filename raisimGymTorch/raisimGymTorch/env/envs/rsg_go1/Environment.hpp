@@ -36,8 +36,10 @@ class ENVIRONMENT : public RaisimGymEnv {
     /// get robot data
     gcDim_ = go1->getGeneralizedCoordinateDim();
     gvDim_ = go1->getDOF();
-    nJoints_ = gvDim_ - 6; // amarco: I guess we're removing the DOFs of the base here?
-    std::cout << "nJoints_: " + std::to_string(nJoints_) + "\n";
+    nJoints_ = gvDim_ - 6; // amarco: I guess we're removing the DOFs of the base here? How are the joint velocities ordered here?
+    // std::cout << "nJoints_: " + std::to_string(nJoints_) + "\n"; // 12
+    // std::cout << "gcDim_: " + std::to_string(gcDim_) + "\n"; // 19
+    // std::cout << "gvDim_: " + std::to_string(gvDim_) + "\n"; // 18
 
     /// initialize containers
     gc_.setZero(gcDim_); gc_init_.setZero(gcDim_);
@@ -74,6 +76,12 @@ class ENVIRONMENT : public RaisimGymEnv {
     // 0.0218, -0.4503, 1.3713, 
     // -0.0141, -0.3949, 1.347; // go1
 
+    // Joint limits:
+    this->pos_joint_lim_upper_.setZero(nJoints_);
+    this->pos_joint_lim_lower.setZero(nJoints_);
+    this->pos_joint_lim_upper_ << 1.047, 2.966, -0.837, 1.047, 2.966, -0.837, 1.047, 2.966, -0.837, 1.047, 2.966, -0.837;
+    this->pos_joint_lim_lower << -1.047, -0.663, -2.721, -1.047, -0.663, -2.721, -1.047, -0.663, -2.721, -1.047, -0.663, -2.721;
+
 
     /// set pd gains
     Eigen::VectorXd jointPgain(gvDim_), jointDgain(gvDim_);
@@ -86,7 +94,10 @@ class ENVIRONMENT : public RaisimGymEnv {
     // body height (1) + body orientation (3) + joint angles (12) + body linear velocty (3) + body angular velocity (3) + joint velocity (12) = 34
     obDim_ = 34;
     std::cout << "obDim_: " + std::to_string(obDim_) + "\n";
-    actionDim_ = nJoints_; actionMean_.setZero(actionDim_); actionStd_.setZero(actionDim_);
+    actionDim_ = nJoints_;
+    // actionDim_ = 6;
+    actionMean_.setZero(actionDim_);
+    actionStd_.setZero(actionDim_);
     obDouble_.setZero(obDim_);
 
     // float action_std = cfg["policy"]["action_std"].As<float>();
@@ -108,7 +119,7 @@ class ENVIRONMENT : public RaisimGymEnv {
     // std::cout << "trial_str: " + trial_str + "\n";
 
 
-    // gggggggggggggg
+    
     // amarco: The above cfg["policy"]["action_std"].As<float>(); doesn't work, so we can't really expose action_std
 
     /// action scaling
@@ -124,6 +135,27 @@ class ENVIRONMENT : public RaisimGymEnv {
     // actionStd_.setConstant(0.1); // amarco
     // actionStd_.setConstant(0.05); // amarco
     actionStd_.setConstant(action_std); // amarco
+
+    // amarco:
+    // this->seq_vel_hips = Eigen::seq(7+2,4,3); // [body_pos(3), body_ori(4), joint_pos(12)]
+    // seq_vel_hips = Eigen::seq(7+2,4,3); // [...?]
+
+    this->action_last.setZero(actionDim_);
+    this->action_curr.setZero(actionDim_);
+    this->action_clipped.setZero(actionDim_);
+
+    // amarco: action clipping
+    // Actions are desired positions, measured in radians.
+    // <go1_const.h>
+    // constexpr double go1_Hip_max   = 1.047;    // unit:radian ( = 60   degree)
+    // constexpr double go1_Hip_min   = -1.047;   // unit:radian ( = -60  degree)
+    // constexpr double go1_Thigh_max = 2.966;    // unit:radian ( = 170  degree)
+    // constexpr double go1_Thigh_min = -0.663;   // unit:radian ( = -38  degree)
+    // constexpr double go1_Calf_max  = -0.837;   // unit:radian ( = -48  degree)
+    // constexpr double go1_Calf_min  = -2.721;   // unit:radian ( = -156 degree)
+    this->action_lim = 2.0;
+
+
 
     /// Reward coefficients
     // rewards_.initializeFromConfigurationFile(cfg["reward"]); // amarco: original
@@ -193,7 +225,7 @@ class ENVIRONMENT : public RaisimGymEnv {
     // Reward velocity tracking:
     float sigma_tracking = 0.25;
     Eigen::Vector2d vel_body_lin_xy_des;
-    vel_body_lin_xy_des << 0.5, 0.0; // action_std = 0.5
+    vel_body_lin_xy_des << 0.5, 0.0; // 2022-12-07-14-04-48 ~2900 epochs; action_std = 0.5 -> pretty stupid policy, just dragging along the floor ...
     
     // Past trials
     // vel_body_lin_xy_des << 1.0, 0.0; // 2022-12-07-09-57-32 ~1000 epochs, walks forward, but ridoculously small steps; action_std = 0.2;
@@ -208,6 +240,10 @@ class ENVIRONMENT : public RaisimGymEnv {
     float error_vel_ang_tracking = pow(0.0-bodyAngularVel_[2],2.0);
     rewards_.record("vel_ang_tracking_error", exp(-error_vel_ang_tracking/sigma_tracking));
 
+    // Reward tracking robot height:
+    float error_height_tracking = pow(0.3435-gc_[2],2.0);
+    rewards_.record("height_body_tracking_error", exp(-error_height_tracking/sigma_tracking));
+
     // Penalize torque:
     rewards_.record("torque", go1->getGeneralizedForce().squaredNorm());
 
@@ -216,6 +252,35 @@ class ENVIRONMENT : public RaisimGymEnv {
 
     // Penalize roll and pitch:
     rewards_.record("vel_ang_xy", (bodyAngularVel_.head(2)).squaredNorm() );
+
+    // amarco:
+
+    // How to avoid the "sliding mode" in which the robot moves but legs barely move?
+
+    // Penalize hip joints positions, they shouldn't be moving too much for walking on a flat floor
+    Eigen::Vector4d pos_hips_des; pos_hips_des << 0.0136, -0.0118, 0.0105, -0.0102;
+    rewards_.record("pos_hips_des", (pos_hips_des-gc_(Eigen::seq(7+2,4,3))).squaredNorm());
+
+
+    // Penalize hip joints velocities: What are the indices for the hips?
+    // Eigen::Vector4d vel_hips_des; vel_hips_des << 0.0, 0.0, 0.0;
+    // rewards_.record("vel_hips_des", (vel_hips_des-gv_(this->seq_hips)).squaredNorm());
+
+    // Penalize joint positions that are out of limits:
+    double pos_joint_off_limits_val = -(gc_.tail(12)-this->pos_joint_lim_lower).cwiseMin(0.0).sum();
+    pos_joint_off_limits_val += (gc_.tail(12)-this->pos_joint_lim_upper_).cwiseMax(0.0).sum();
+    rewards_.record("pos_joint_off_limits", pos_joint_off_limits_val);
+    // cwiseMin(action_lim).cwiseMax(-action_lim);
+
+    // Penalize jumps in consecutive actions:
+    rewards_.record("action_rate", (this->action_curr.head(6) - this->action_last.head(6)).squaredNorm());
+    for(int ii; ii < this->action_last.size(); ii++){
+      this->action_last[ii] = this->action_curr[ii];
+    }
+
+    // TODO: Reduce the action space by simply coupling the FR RL legs together. Reduce by half.
+
+
 
     return rewards_.sum();
   }
@@ -239,12 +304,56 @@ class ENVIRONMENT : public RaisimGymEnv {
   // amarco: original step function (replaced by the above function; it does exactly the same)
   float step(const Eigen::Ref<EigenVec>& action) final {
 
+    // std::cout << "action.size(): " << action.size() << "\n";
+
+    // std::cout << "Before:\n";
+    // std::cout << "action: " << action.transpose().format(this->clean_format) << "\n";
+    // std::cout << "action curr: " << this->action_curr.transpose().format(this->clean_format) << "\n";
+    // std::cout << "action clipped: " << this->action_clipped.transpose().format(this->clean_format) << "\n";
+
+    // We need to modify the action. Copy it:
+    for(int ii; ii<this->action_curr.size();ii++){
+      this->action_curr[ii] = action[ii];
+      this->action_clipped[ii] = action[ii];
+    }
+
+    // Clip the action:
+    this->action_clipped.cwiseMin(this->action_lim).cwiseMax(-this->action_lim);
+    // std::cout << "After:\n";
+    // std::cout << "action: " << action.transpose().format(this->clean_format) << "\n";
+    // std::cout << "action curr: " << this->action_curr.transpose().format(this->clean_format) << "\n";
+    // std::cout << "action clipped: " << this->action_clipped.transpose().format(this->clean_format) << "\n";
+
+    // Parse into desired position:
+
+
+    // Couple:
+    Eigen::VectorXd pos_joint_des;
+    pos_joint_des.setZero(this->nJoints_);
+    pos_joint_des[0] = this->action_clipped[0];
+    pos_joint_des[1] = this->action_clipped[1];
+    pos_joint_des[2] = this->action_clipped[2];
+
+    pos_joint_des[9] = -this->action_clipped[0];
+    pos_joint_des[10] = this->action_clipped[1];
+    pos_joint_des[11] = this->action_clipped[2];
+
+    pos_joint_des[3] = -this->action_clipped[3];
+    pos_joint_des[4] = this->action_clipped[4];
+    pos_joint_des[5] = this->action_clipped[5];
+
+    pos_joint_des[6] = this->action_clipped[3];
+    pos_joint_des[7] = this->action_clipped[4];
+    pos_joint_des[8] = this->action_clipped[5];
+
+    
     /// action scaling
-    pTarget12_ = action.cast<double>();
+    // pTarget12_ = action.cast<double>(); // original
+    // pTarget12_ = this->action_clipped.cast<double>(); // amarco
+    pTarget12_ = pos_joint_des.cast<double>(); // amarco
     pTarget12_ = pTarget12_.cwiseProduct(actionStd_); // amarco: element-wise product; https://eigen.tuxfamily.org/dox/group__TutorialArrayClass.html
     pTarget12_ += actionMean_;
     pTarget_.tail(nJoints_) = pTarget12_;
-
     go1->setPdTarget(pTarget_, vTarget_);
 
     // amarco NOTE: Even though it's inefficient to recompute this here as opposed to
@@ -320,6 +429,14 @@ class ENVIRONMENT : public RaisimGymEnv {
 
   // amarco added
   int integration_steps_;
+  Eigen::VectorXd pos_joint_lim_upper_;
+  Eigen::VectorXd pos_joint_lim_lower;
+  Eigen::VectorXd action_last;
+  Eigen::VectorXd action_curr;
+  Eigen::VectorXd action_clipped;
+  // auto seq_vel_hips;
+  double action_lim;
+  Eigen::IOFormat clean_format;
 
   /// these variables are not in use. They are placed to show you how to create a random number sampler.
   std::normal_distribution<double> normDist_;

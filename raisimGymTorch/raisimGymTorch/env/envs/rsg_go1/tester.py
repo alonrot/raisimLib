@@ -80,8 +80,8 @@ max_steps = 600
 # integration_steps = env.wrapper.get_nr_of_times_integration_is_called_inside_step_for_the_same_applied_action()
 time_sleep = cfg['environment']['control_dt']
 
-# time2sleep_for_slow_visualization = 0.5
-time2sleep_for_slow_visualization = 0.0
+time2sleep_for_slow_visualization = 0.5
+# time2sleep_for_slow_visualization = 0.0
 
 # dones = False
 for step in range(max_steps):
