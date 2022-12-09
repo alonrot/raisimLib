@@ -9,6 +9,9 @@
 #include <set>
 #include "../../RaisimGymEnv.hpp"
 
+// amarco:
+#include <math.h>
+
 namespace raisim {
 
 class ENVIRONMENT : public RaisimGymEnv {
@@ -100,8 +103,8 @@ class ENVIRONMENT : public RaisimGymEnv {
     obDim_ = 34;
     std::cout << "obDim_: " + std::to_string(obDim_) + "\n";
     // actionDim_ = nJoints_;
-    // actionDim_ = 4;
-    actionDim_ = 6;
+    actionDim_ = 4;
+    // actionDim_ = 6;
     actionMean_.setZero(nJoints_);
     actionStd_.setZero(nJoints_);
     obDouble_.setZero(obDim_);
@@ -160,7 +163,11 @@ class ENVIRONMENT : public RaisimGymEnv {
     // constexpr double go1_Thigh_min = -0.663;   // unit:radian ( = -38  degree)
     // constexpr double go1_Calf_max  = -0.837;   // unit:radian ( = -48  degree)
     // constexpr double go1_Calf_min  = -2.721;   // unit:radian ( = -156 degree)
-    this->action_lim = 10.0;
+    // this->action_lim = 10.0;
+    this->action_lim = 5.0;
+
+
+    this->time_counter = 0.0;
 
 
 
@@ -231,6 +238,8 @@ class ENVIRONMENT : public RaisimGymEnv {
     // for(int i=0; i< 100; i++){
     //   this->step(Eigen::VectorZeros(...))
     // }
+
+    this->time_counter = 0.0;
 
     updateObservation();
 
@@ -305,9 +314,6 @@ inline int detect_contact(void){
 
 
 
-
-
-
   // amarco: added for calling it inside step, and exposing it to python
   inline float get_latest_rewards(void){
 
@@ -336,6 +342,8 @@ inline int detect_contact(void){
     // 2022-12-09-08-58-04 -> ~1000, same thing, a bit better
 
     // 2022-12-09-09-32-06 -> ~2000, a bit better but still dragging the feet
+
+    // 2022-12-09-12-26-50 -> ~1200, using CPG, dragging totally
 
     // Reward linear body velocity:
     float error_vel_lin_tracking = (vel_body_lin_xy_des-bodyLinearVel_.head(2)).squaredNorm();
@@ -413,36 +421,11 @@ inline int detect_contact(void){
   // }
 
 
-  // amarco: original step function (replaced by the above function; it does exactly the same)
-  float step(const Eigen::Ref<EigenVec>& action) final {
-
-
-    // std::cout << "action.size(): " << action.size() << "\n";
-
-    // std::cout << "Before:\n";
-    // std::cout << "action: " << action.transpose().format(this->clean_format) << "\n";
-    // std::cout << "action curr: " << this->action_curr.transpose().format(this->clean_format) << "\n";
-    // std::cout << "action clipped: " << this->action_clipped.transpose().format(this->clean_format) << "\n";
-
-    // We need to modify the action. Copy it:
-    for(int ii; ii<this->action_curr.size();ii++){
-      this->action_curr[ii] = action[ii];
-      this->action_clipped[ii] = action[ii];
-    }
-
-    // Clip the action:
-    this->action_clipped.cwiseMin(this->action_lim).cwiseMax(-this->action_lim);
-    // std::cout << "After:\n";
-    // std::cout << "action: " << action.transpose().format(this->clean_format) << "\n";
-    // std::cout << "action curr: " << this->action_curr.transpose().format(this->clean_format) << "\n";
-    // std::cout << "action clipped: " << this->action_clipped.transpose().format(this->clean_format) << "\n";
-
-    // Parse into desired position:
-
+  inline void parse_action(Eigen::Ref<Eigen::VectorXd> action_des){
 
     // Couple:
-    Eigen::VectorXd action_des;
-    action_des.setZero(this->nJoints_);
+    // Eigen::VectorXd action_des;
+    // action_des.setZero(this->nJoints_);
     action_des[0] = this->action_clipped[0];
     action_des[1] = this->action_clipped[1];
     action_des[2] = this->action_clipped[2];
@@ -480,9 +463,109 @@ inline int detect_contact(void){
     // action_des[7] = this->action_clipped[2];
     // action_des[8] = this->action_clipped[3];
 
+    return;
+  }
+
+  inline void parse_action_cpg(Eigen::Ref<Eigen::VectorXd> action_des){
+
+    double freq_FR_1, ampl_FR_1, freq_FR_2, ampl_FR_2;
+
+    freq_FR_1 = this->action_clipped[0];
+    ampl_FR_1 = this->action_clipped[1];
+    freq_FR_2 = this->action_clipped[2];
+    ampl_FR_2 = this->action_clipped[3];
+
+    action_des[0] = 0.0; // By setting zero here, we'll be applying just the initial position as desired joint position
+    action_des[1] = ampl_FR_1*sin(freq_FR_1*2.*M_PI*this->time_counter);
+    action_des[2] = ampl_FR_2*sin(freq_FR_2*2.*M_PI*this->time_counter);
+    action_des[9] = 0.0;
+    action_des[10] = ampl_FR_1*sin(freq_FR_1*2.*M_PI*this->time_counter);
+    action_des[11] = ampl_FR_2*sin(freq_FR_2*2.*M_PI*this->time_counter);
+
+    action_des[3] = 0.0;
+    action_des[4] = ampl_FR_1*sin(freq_FR_1*2.*M_PI*this->time_counter + M_PI);
+    action_des[5] = ampl_FR_2*sin(freq_FR_2*2.*M_PI*this->time_counter + M_PI);
+    action_des[6] = 0.0;
+    action_des[7] = ampl_FR_1*sin(freq_FR_1*2.*M_PI*this->time_counter + M_PI);
+    action_des[8] = ampl_FR_2*sin(freq_FR_2*2.*M_PI*this->time_counter + M_PI);
+
+    this->time_counter += 0.002;
+
+    return;
+  }
 
 
+  // amarco: original step function (replaced by the above function; it does exactly the same)
+  float step(const Eigen::Ref<EigenVec>& action) final {
+
+    // std::cout << "action.size(): " << action.size() << "\n";
+
+    // std::cout << "Before:\n";
+    // std::cout << "action: " << action.transpose().format(this->clean_format) << "\n";
+    // std::cout << "action curr: " << this->action_curr.transpose().format(this->clean_format) << "\n";
+    // std::cout << "action clipped: " << this->action_clipped.transpose().format(this->clean_format) << "\n";
+
+    // We need to modify the action. Copy it:
+    for(int ii; ii<this->action_curr.size();ii++){
+      this->action_curr[ii] = action[ii];
+      this->action_clipped[ii] = action[ii];
+    }
+
+    // Clip the action:
+    this->action_clipped.cwiseMin(this->action_lim).cwiseMax(-this->action_lim);
+    // std::cout << "After:\n";
+    // std::cout << "action: " << action.transpose().format(this->clean_format) << "\n";
+    // std::cout << "action curr: " << this->action_curr.transpose().format(this->clean_format) << "\n";
+    // std::cout << "action clipped: " << this->action_clipped.transpose().format(this->clean_format) << "\n";
+
+    // Parse into desired position:
+
+
+
+
+
+
+
+    Eigen::VectorXd action_des;
+    action_des.setZero(this->nJoints_);
+    // std::cout << "action_des: " << action_des.transpose().format(this->clean_format) << "\n";
+    // this->parse_action(action_des); // Uses this->action_clipped
+    this->parse_action_cpg(action_des); // Uses this->action_clipped
+    // std::cout << "action_des: " << action_des.transpose().format(this->clean_format) << "\n";
     
+
+
+
+
+
+    // // Couple:
+    // Eigen::VectorXd action_des;
+    // action_des.setZero(this->nJoints_);
+    // action_des[0] = this->action_clipped[0];
+    // action_des[1] = this->action_clipped[1];
+    // action_des[2] = this->action_clipped[2];
+
+    // action_des[9] = -this->action_clipped[0];
+    // action_des[10] = this->action_clipped[1];
+    // action_des[11] = this->action_clipped[2];
+
+    // action_des[3] = -this->action_clipped[3];
+    // action_des[4] = this->action_clipped[4];
+    // action_des[5] = this->action_clipped[5];
+
+    // action_des[6] = this->action_clipped[3];
+    // action_des[7] = this->action_clipped[4];
+    // action_des[8] = this->action_clipped[5];
+
+
+
+
+
+
+
+
+
+
     /// action scaling
     // pTarget12_ = action.cast<double>(); // original
     // pTarget12_ = this->action_clipped.cast<double>(); // amarco
@@ -490,8 +573,11 @@ inline int detect_contact(void){
     pTarget12_ = pTarget12_.cwiseProduct(actionStd_); // amarco: element-wise product; https://eigen.tuxfamily.org/dox/group__TutorialArrayClass.html
     pTarget12_ += actionMean_;
     pTarget_.tail(nJoints_) = pTarget12_;
-    go1->setPdTarget(pTarget_, vTarget_);
 
+    // std::cout << "pTarget_: " << pTarget_.transpose().format(this->clean_format) << "\n";
+    // std::cout << "vTarget_: " << vTarget_.transpose().format(this->clean_format) << "\n";
+
+    go1->setPdTarget(pTarget_, vTarget_);
     // amarco NOTE: Even though it's inefficient to recompute this here as opposed to
     // computing it only once in the header, we can't do it in the header
     // because control_dt_ and simulation_dt_ are defined as some default values and
@@ -513,6 +599,7 @@ inline int detect_contact(void){
 
     return get_latest_rewards();
   }
+
 
 
   void updateObservation() {
@@ -577,6 +664,7 @@ inline int detect_contact(void){
   std::vector<int> foot_in_contact;
   std::vector<size_t> footIndices_mine;
   double time_in_the_air;
+  double time_counter;
 
   /// these variables are not in use. They are placed to show you how to create a random number sampler.
   std::normal_distribution<double> normDist_;
