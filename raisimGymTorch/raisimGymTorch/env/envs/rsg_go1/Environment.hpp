@@ -134,7 +134,8 @@ class ENVIRONMENT : public RaisimGymEnv {
 
     double action_std;
     // action_std = 0.01; // before changing reward function
-    action_std = 0.75;
+    // action_std = 0.75;
+    action_std = 1.0;
 
     // actionStd_.setConstant(0.3); // Original
     // actionStd_.setConstant(1.0); // amarco
@@ -159,7 +160,7 @@ class ENVIRONMENT : public RaisimGymEnv {
     // constexpr double go1_Thigh_min = -0.663;   // unit:radian ( = -38  degree)
     // constexpr double go1_Calf_max  = -0.837;   // unit:radian ( = -48  degree)
     // constexpr double go1_Calf_min  = -2.721;   // unit:radian ( = -156 degree)
-    this->action_lim = 5.0;
+    this->action_lim = 10.0;
 
 
 
@@ -174,6 +175,36 @@ class ENVIRONMENT : public RaisimGymEnv {
     footIndices_.insert(go1->getBodyIdx("RL_calf")); // go1
     footIndices_.insert(go1->getBodyIdx("RR_calf")); // go1
 
+    for(auto ii=footIndices_.begin(); ii!=footIndices_.end(); ii++){
+      std::cout << "footIndices_: " << *ii << "\n";
+    }
+
+    this->footIndices_mine = {go1->getBodyIdx("FR_calf"),   // 3
+                              go1->getBodyIdx("FL_calf"),   // 6
+                              go1->getBodyIdx("RR_calf"),   // 9
+                              go1->getBodyIdx("RL_calf")};  // 12
+
+    for(int ii=0; ii<this->footIndices_mine.size();ii++){
+      std::cout << "this->footIndices_mine[" << ii << "] = " << this->footIndices_mine[ii] << "\n";
+    }
+
+    this->foot_in_contact = {0, 0, 0, 0};
+
+    this->time_in_the_air = 0.0;
+
+
+    detect_contact();
+
+    // auto aux1 = footIndices_.find(12);
+    // std::cout << "aux_exists: " << *aux1 << "\n";
+
+
+    // auto aux2 = footIndices_.find(4);
+    // std::cout << "aux_doesnt_exists: " << *aux2 << "\n";
+
+
+    // std::cout << footIndices_ << "\n";
+
     /// visualize if it is the first environment
     if (visualizable_) {
       server_ = std::make_unique<raisim::RaisimServer>(world_.get());
@@ -181,7 +212,6 @@ class ENVIRONMENT : public RaisimGymEnv {
       server_->focusOn(go1);
     }
 
-    trying_out_some_stuff();
 
   }
 
@@ -230,11 +260,12 @@ class ENVIRONMENT : public RaisimGymEnv {
 
 
 
-inline void trying_out_some_stuff(void){
+inline int detect_contact(void){
 
-  /// Let's check all contact impulses acting on "LF_SHANK"
-  auto footIndex = go1->getBodyIdx("FR_calf");
-  // std::cout << "footIndex: " << footIndex << "\n";
+  // Initialize:
+  for(int ii=0; ii < this->foot_in_contact.size(); ii++){
+    this->foot_in_contact[ii] = 0;
+  }
 
   /// for all contacts on the robot, check ...
   for(auto& contact: go1->getContacts()) {
@@ -242,30 +273,28 @@ inline void trying_out_some_stuff(void){
     if (contact.skip())
       continue; /// if the contact is internal, one contact point is set to 'skip'
     
-    if ( footIndex == contact.getlocalBodyIndex() ) {
-    
-      // std::cout << "Contact impulse in the contact frame, size: " << contact.getImpulse().e().size() << std::endl;
-      // std::cout << "Contact impulse in the contact frame: " << contact.getImpulse().e() << std::endl;
-      /// the impulse is acting from objectB to objectA. You can check if this object is objectA or B by
-    
-      std::cout << "is ObjectA: " << contact.isObjectA() << std::endl;
-      // std::cout << "Contact frame: \n" << contact.getContactFrame().e().transpose() << std::endl;
-      /// contact frame is transposed.
-    
-      // std::cout << "Contact impulse in the world frame: " << contact.getContactFrame().e().transpose() * contact.getImpulse().e() << std::endl;
-      // std::cout << "Contact Normal in the world frame: " << contact.getNormal().e().transpose() << std::endl;
-      // std::cout << "Contact position in the world frame: " << contact.getPosition().e().transpose() << std::endl;
-      std::cout << "It collides with: " << world_->getObject(contact.getPairObjectIndex()) << std::endl;
-    
-      // if (contact.getPairContactIndexInPairObject() != raisim::BodyType::STATIC) {
-      //   /// Static objects do not have Contacts store. So you must check if the pair object is static
-      //   /// This saves computation in raisim
-      //   world_->getObject(contact.getPairObjectIndex())->getContacts(); /// You can use the same methods on the pair object
-      // }
-    
-    
+    for(int ii=0; ii < this->footIndices_mine.size(); ii++){
+
+      if(this->footIndices_mine[ii] == contact.getlocalBodyIndex()){
+        this->foot_in_contact[ii] = 1;
+      }
+
     }
+
   }
+
+
+  int sum_contact = 0;
+  // std::cout << "this->foot_in_contact:\n";
+  for(int ii=0; ii < this->foot_in_contact.size(); ii++){
+    // std::cout << this->foot_in_contact[ii] << ", ";
+    sum_contact += this->foot_in_contact[ii];
+  }
+  // std::cout << "\n";
+
+  // std::cout << "sum_contact: " << sum_contact << "\n";
+
+  return sum_contact;
 
 }
 
@@ -300,6 +329,14 @@ inline void trying_out_some_stuff(void){
 
     // 2022-12-08-10-48-31 -> Same as above; the robot sort of walks, but sliding the feet
 
+    // 2022-12-08-18-17-06 -> It falls down... after 700 (maybe continue training, not sure)
+
+    // 2022-12-08-22-58-21 -> ~1200, retrained from 2022-12-08-18-17-06, so in total ~1900 -> Same as above...
+
+    // 2022-12-09-08-58-04 -> ~1000, same thing, a bit better
+
+    // 2022-12-09-09-32-06 -> ~2000, a bit better but still dragging the feet
+
     // Reward linear body velocity:
     float error_vel_lin_tracking = (vel_body_lin_xy_des-bodyLinearVel_.head(2)).squaredNorm();
     rewards_.record("vel_body_tracking_error", exp(-error_vel_lin_tracking/sigma_tracking));
@@ -309,7 +346,7 @@ inline void trying_out_some_stuff(void){
     rewards_.record("vel_ang_tracking_error", exp(-error_vel_ang_tracking/sigma_tracking));
 
     // Reward tracking robot height:
-    float error_height_tracking = pow(0.3435-gc_[2],2.0);
+    float error_height_tracking = pow(0.25-gc_[2],2.0);
     rewards_.record("height_body_tracking_error", exp(-error_height_tracking/sigma_tracking));
 
     // Penalize torque:
@@ -349,9 +386,13 @@ inline void trying_out_some_stuff(void){
       this->action_last[ii] = this->action_curr[ii];
     }
 
-    // TODO: Reduce the action space by simply coupling the FR RL legs together. Reduce by half.
-
-
+    // Reward when the FR is in contact but the FL is in the air, or viceversa:
+    int sum_contact = this->detect_contact();
+    this->time_in_the_air = 0.0;
+    if(this->foot_in_contact[0] != this->foot_in_contact[1]){
+      this->time_in_the_air = 0.002;
+    }
+    rewards_.record("time_in_the_air", this->time_in_the_air);
 
     return rewards_.sum();
   }
@@ -375,7 +416,6 @@ inline void trying_out_some_stuff(void){
   // amarco: original step function (replaced by the above function; it does exactly the same)
   float step(const Eigen::Ref<EigenVec>& action) final {
 
-    trying_out_some_stuff();
 
     // std::cout << "action.size(): " << action.size() << "\n";
 
@@ -457,12 +497,12 @@ inline void trying_out_some_stuff(void){
     // because control_dt_ and simulation_dt_ are defined as some default values and
     // they will suffer changes once the VectorizedEnvironment functions are called
     integration_steps_ = int(control_dt_ / simulation_dt_ + 1e-10);
+    // integration_steps_ = 1;
     
     // std::cout << "integration_steps_: " + std::to_string(integration_steps_) + "\n";
     // std::cout << "control_dt_: " + std::to_string(control_dt_) + "\n";
     // std::cout << "simulation_dt_: " + std::to_string(simulation_dt_) + "\n";
 
-    // integration_steps_ = 1;
     for(int i=0; i< integration_steps_; i++){
       if(server_) server_->lockVisualizationServerMutex();
       world_->integrate();
@@ -534,6 +574,9 @@ inline void trying_out_some_stuff(void){
   // auto seq_vel_hips;
   double action_lim;
   Eigen::IOFormat clean_format;
+  std::vector<int> foot_in_contact;
+  std::vector<size_t> footIndices_mine;
+  double time_in_the_air;
 
   /// these variables are not in use. They are placed to show you how to create a random number sampler.
   std::normal_distribution<double> normDist_;

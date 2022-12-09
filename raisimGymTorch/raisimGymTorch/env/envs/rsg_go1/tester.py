@@ -81,7 +81,7 @@ max_steps = 600
 time_sleep = cfg['environment']['control_dt']
 # time_sleep = cfg['environment']['simulation_dt']
 
-time2sleep_for_slow_visualization = 0.1
+time2sleep_for_slow_visualization = 0.05
 # time2sleep_for_slow_visualization = 0.0
 
 # dones = False
@@ -109,7 +109,7 @@ for step in range(max_steps):
     #         time.sleep(time_sleep)
     # else:
 
-    # for ii in range(4):
+    # for ii in range(5):
     #     reward_ll, dones = env.step(action_ll.cpu().detach().numpy())
     #     time.sleep(time_sleep)
 

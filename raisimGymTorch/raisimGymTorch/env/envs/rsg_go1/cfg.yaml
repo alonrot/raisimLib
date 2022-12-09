@@ -36,18 +36,20 @@ environment:
       coeff: 2.0
     vel_ang_tracking_error:
       coeff: 1.0
+    time_in_the_air:
+      coeff: 4.0
+    height_body_tracking_error:
+      coeff: 0.85
     torque:
       coeff: -4e-7
     vel_body_lin_z:
       coeff: -2.0
     vel_ang_xy:
       coeff: -0.05
-    height_body_tracking_error:
-      coeff: 0.75
     pos_hips_des:
       coeff: -1.0
     action_rate:
-      coeff: -0.001 # this kind of worked...
+      coeff: -0.000 # this kind of worked...
     pos_joint_off_limits:
       coeff: -0.0
 

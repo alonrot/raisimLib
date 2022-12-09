@@ -23,7 +23,7 @@ pip install numpy
 	cd <path/to/raisimLib>/build_mac
 	```
 	* On Mac:
-		`cmake .. -DCMAKE_INSTALL_PREFIX=/Users/alonrot/work/code_projects_WIP/raisimLib/build/build_install_mac -DRAISIM_EXAMPLE=ON -DRAISIM_PY=ON -DPYTHON_EXECUTABLE=$(python3 -c "import sys; print(sys.executable)")`
+		`cmake .. -DCMAKE_INSTALL_PREFIX=/Users/alonrot/work/code_projects_WIP/raisimLib/build_install_mac -DRAISIM_EXAMPLE=ON -DRAISIM_PY=ON -DPYTHON_EXECUTABLE=$(python3 -c "import sys; print(sys.executable)")`
 	* On Linux:
 		`cmake .. -DCMAKE_INSTALL_PREFIX=/home/ubuntu/mounted_home/work/code_projects_WIP/raisimLib/build_install_ubuntu_vm -DRAISIM_EXAMPLE=ON -DRAISIM_PY=ON -DPYTHON_EXECUTABLE=$(python3 -c "import sys; print(sys.executable)")`
  * With version 1.1.5 `make install -j4` worked
