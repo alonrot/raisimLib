@@ -1,16 +1,18 @@
 seed: 1
-record_video: yes
+# record_video: yes # amarco: not used
 
 environment:
   render: True
 # just testing commenting
   num_envs: 100
+  # num_envs: 1
   # eval_every_n: 200 # original
-  eval_every_n: 100
-  num_threads: 30 # this is not used for anything in the code
+  eval_every_n: 50
+  num_threads: 30
   simulation_dt: 0.002 # seconds
   control_dt: 0.01 # seconds
-  max_time: 4.0 # seconds
+  max_time: 5.0 # seconds
+  # dummy: 5.0
   # reward:
   #   forwardVel:
   #     coeff: 0.3
@@ -32,26 +34,40 @@ environment:
   #   lateralVel:
   #     coeff: -1e-4
   reward:
-    vel_body_tracking_error:
-      coeff: 2.0
     vel_ang_tracking_error:
-      coeff: 1.0
-    time_in_the_air:
-      coeff: 4.0
+      coeff: 0.5
+    time_good_contacts:
+      coeff: 5.0
     height_body_tracking_error:
-      coeff: 0.85
+      coeff: 1.0
+    vel_body_tracking_error:
+      coeff: -50.0
+    time_bad_contacts:
+      coeff: -5.0
     torque:
-      coeff: -4e-7
+      # coeff: -4e-7 # original
+      # coeff: -4e-8
+      coeff: -5e-4
     vel_body_lin_z:
       coeff: -2.0
     vel_ang_xy:
-      coeff: -0.05
+      coeff: -0.5
     pos_hips_des:
       coeff: -1.0
     action_rate:
-      coeff: -0.000 # this kind of worked...
+      coeff: -0.01 # this kind of worked...
     pos_joint_off_limits:
-      coeff: -0.0
+      coeff: -5.0
+    joint_acc_curr:
+      # coeff: -2.5e-7
+      coeff: -2.5e-5
+      # coeff: -0.0
+
+  # amarco added
+  P_gains_val: 40.0
+  D_gains_val: 2.0
+  action_std: 0.25
+  action_lim: 1.0
 
 
 # # amarco

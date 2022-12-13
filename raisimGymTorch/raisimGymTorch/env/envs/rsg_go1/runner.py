@@ -130,33 +130,33 @@ for update in range(1000000):
         obs = env.observe()
         action = ppo.act(obs)
 
-        # amarco:
-        if np.any(np.isnan(obs)):
-            print("obs is nan")
-            print(obs)
+        # # amarco:
+        # if np.any(np.isnan(obs)):
+        #     print("obs is nan")
+        #     print(obs)
 
-        if np.any(np.isnan(action)):
-            print("action is nan")
-            print(action)
+        # if np.any(np.isnan(action)):
+        #     print("action is nan")
+        #     print(action)
 
-        if np.any(np.isinf(obs)):
-            print("obs is inf")
-            print(obs)
+        # if np.any(np.isinf(obs)):
+        #     print("obs is inf")
+        #     print(obs)
 
-        if np.any(np.isinf(action)):
-            print("action is inf")
-            print(action)
+        # if np.any(np.isinf(action)):
+        #     print("action is inf")
+        #     print(action)
 
         reward, dones = env.step(action)
         
-        # amarco:
-        if np.any(np.isnan(reward)):
-            print("reward is nan")
-            print(reward)
+        # # amarco:
+        # if np.any(np.isnan(reward)):
+        #     print("reward is nan")
+        #     print(reward)
 
-        if np.any(np.isinf(reward)):
-            print("reward is inf")
-            print(reward)
+        # if np.any(np.isinf(reward)):
+        #     print("reward is inf")
+        #     print(reward)
 
         ppo.step(value_obs=obs, rews=reward, dones=dones)
 

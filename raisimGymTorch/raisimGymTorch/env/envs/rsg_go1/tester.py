@@ -32,6 +32,8 @@ cfg['environment']['num_envs'] = 1
 
 env = VecEnv(rsg_go1.RaisimGymEnv(home_path + "/rsc", dump(cfg['environment'], Dumper=RoundTripDumper)), cfg['environment'])
 
+
+
 # shortcuts
 ob_dim = env.num_obs
 act_dim = env.num_acts
@@ -56,16 +58,21 @@ n_steps = math.floor(cfg['environment']['max_time'] / cfg['environment']['contro
 total_steps = n_steps * 1
 start_step_id = 0
 
+# pdb.set_trace()
+# weight_path = "./raisimGymTorch/env/envs/rsg_go1/isaac_gym/policy_1.pt"
+
 print("Visualizing and evaluating the policy: ", weight_path)
 loaded_graph = ppo_module.MLP(cfg['architecture']['policy_net'], torch.nn.LeakyReLU, ob_dim, act_dim)
 loaded_graph.load_state_dict(torch.load(weight_path)['actor_architecture_state_dict'])
 
+# Override:
+# weight_dir =
+
+
+
 env.load_scaling(weight_dir, int(iteration_number))
 env.turn_on_visualization()
 
-# max_steps = 1000000
-# max_steps = 1000 ## 10 secs
-max_steps = 600
 
 
 # using_single_integration_step = False # This is only True if we hardcode integration_steps_ = 1; in Environment.hpp
@@ -84,10 +91,14 @@ time_sleep = cfg['environment']['control_dt']
 time2sleep_for_slow_visualization = 0.05
 # time2sleep_for_slow_visualization = 0.0
 
+max_steps = 1000000
+# max_steps = 1000 ## 10 secs
+# max_steps = 600
 # dones = False
 for step in range(max_steps):
     time.sleep(time2sleep_for_slow_visualization)
     obs = env.observe(False)
+    print("obs",obs)
     action_ll = loaded_graph.architecture(torch.from_numpy(obs).cpu())
 
     # """

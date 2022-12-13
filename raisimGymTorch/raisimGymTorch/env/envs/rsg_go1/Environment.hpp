@@ -11,6 +11,17 @@
 
 // amarco:
 #include <math.h>
+#include <cmath>
+#include <cfloat>
+
+enum action_parsing_types : int {
+
+  STANDARD,
+  COUPLED,
+  COUPLED_NO_LAT_HIP,
+  COUPLED_CPG
+
+};
 
 namespace raisim {
 
@@ -35,6 +46,22 @@ class ENVIRONMENT : public RaisimGymEnv {
     // amarco: not using this; left here for reference
     // size_t id1 = go1->getFrameIdxByName("FR_hip_joint");
     // std::cout << "id1: " + std::to_string(id1) + "\n";
+
+
+    // // float dummy_val1 = cfg.dummy.template As<float>();
+    // RSFATAL_IF(cfg["dummy"].IsNone(), "Node dummy doesn't exist");
+    // float dummy_val = cfg["dummy"].template As<float>();
+    // std::cout << "dummy_val: " << dummy_val << "\n";
+
+    float P_gains_val = 0.0;
+    read_value_from_cfg_file(cfg,"P_gains_val",P_gains_val);
+    float D_gains_val = 0.0;
+    read_value_from_cfg_file(cfg,"D_gains_val",D_gains_val);
+    float action_std = 0.0;
+    read_value_from_cfg_file(cfg,"action_std",action_std);
+    read_value_from_cfg_file(cfg,"action_lim",this->action_lim);
+
+
     
     /// get robot data
     gcDim_ = go1->getGeneralizedCoordinateDim();
@@ -60,6 +87,10 @@ class ENVIRONMENT : public RaisimGymEnv {
     // gc_init_ << 0.1454, -1.4882, 0.3408, 1.0, 0.0, 0.0, 0.0, 0.0273, 0.50, -1.3512, -0.0371, 0.4368, -1.3878, 0.0218, -0.4503, 1.3713, -0.0141, -0.3949, 1.347; // go1
 
 
+
+    // // NOTE: The getSimulationTimeStep() will return a default value, different from the user-defined desired value, specified in the config file. Such value will be assigned later on by upper classes, after step() is called for the first time
+    // std::cout << "[initialization] this->getControlTimeStep(): " << this->getControlTimeStep() << "\n";
+    // std::cout << "[initialization] this->getSimulationTimeStep(): " << this->getSimulationTimeStep() << "\n";
 
 
     // CORRECT posture FROM PYTHON:
@@ -93,18 +124,44 @@ class ENVIRONMENT : public RaisimGymEnv {
 
     /// set pd gains
     Eigen::VectorXd jointPgain(gvDim_), jointDgain(gvDim_);
-    jointPgain.setZero(); jointPgain.tail(nJoints_).setConstant(40.0);
-    jointDgain.setZero(); jointDgain.tail(nJoints_).setConstant(2.0);
+    // jointPgain.setZero(); jointPgain.tail(nJoints_).setConstant(40.0);
+    // jointDgain.setZero(); jointDgain.tail(nJoints_).setConstant(2.0);
+    jointPgain.setZero(); jointPgain.tail(nJoints_).setConstant(P_gains_val);
+    jointDgain.setZero(); jointDgain.tail(nJoints_).setConstant(D_gains_val);
     go1->setPdGains(jointPgain, jointDgain);
     go1->setGeneralizedForce(Eigen::VectorXd::Zero(gvDim_));
+
+
+    // Select action parsing:
+    this->which_action_parsing = COUPLED;
+    // this->which_action_parsing = COUPLED_NO_LAT_HIP;
+    // this->which_action_parsing = COUPLED_CPG;
+
+
+    if(this->which_action_parsing == STANDARD){
+      this->actionDim_ = nJoints_;
+    }
+
+    if(this->which_action_parsing == COUPLED){
+      this->actionDim_ = 6;
+    }
+
+    if(this->which_action_parsing == COUPLED_NO_LAT_HIP){
+      this->actionDim_ = 4;
+    }
+
+    if(this->which_action_parsing == COUPLED_CPG){
+      this->actionDim_ = 4;
+    }
+
+
 
     /// MUST BE DONE FOR ALL ENVIRONMENTS
     // body height (1) + body orientation (3) + joint angles (12) + body linear velocty (3) + body angular velocity (3) + joint velocity (12) = 34
     obDim_ = 34;
     std::cout << "obDim_: " + std::to_string(obDim_) + "\n";
-    // actionDim_ = nJoints_;
-    actionDim_ = 4;
-    // actionDim_ = 6;
+
+
     actionMean_.setZero(nJoints_);
     actionStd_.setZero(nJoints_);
     obDouble_.setZero(obDim_);
@@ -135,10 +192,10 @@ class ENVIRONMENT : public RaisimGymEnv {
     actionMean_ = gc_init_.tail(nJoints_);
 
 
-    double action_std;
+    // double action_std;
     // action_std = 0.01; // before changing reward function
     // action_std = 0.75;
-    action_std = 1.0;
+    // action_std = 1.0;
 
     // actionStd_.setConstant(0.3); // Original
     // actionStd_.setConstant(1.0); // amarco
@@ -153,6 +210,7 @@ class ENVIRONMENT : public RaisimGymEnv {
     this->action_last.setZero(actionDim_);
     this->action_curr.setZero(actionDim_);
     this->action_clipped.setZero(actionDim_);
+    this->first_time = true;
 
     // amarco: action clipping
     // Actions are desired positions, measured in radians.
@@ -164,10 +222,15 @@ class ENVIRONMENT : public RaisimGymEnv {
     // constexpr double go1_Calf_max  = -0.837;   // unit:radian ( = -48  degree)
     // constexpr double go1_Calf_min  = -2.721;   // unit:radian ( = -156 degree)
     // this->action_lim = 10.0;
-    this->action_lim = 5.0;
-
+    // this->action_lim = action_lim;
 
     this->time_counter = 0.0;
+    this->generalized_force.setZero(18);
+
+
+    this->joint_vel_curr.setZero(this->nJoints_);
+    this->joint_vel_last.setZero(this->nJoints_);
+    this->joint_acc_curr.setZero(this->nJoints_);
 
 
 
@@ -195,9 +258,15 @@ class ENVIRONMENT : public RaisimGymEnv {
       std::cout << "this->footIndices_mine[" << ii << "] = " << this->footIndices_mine[ii] << "\n";
     }
 
-    this->foot_in_contact = {0, 0, 0, 0};
+    this->foot_in_contact_curr = {0, 0, 0, 0};
+    this->foot_in_contact_last = {0, 0, 0, 0};
 
-    this->time_in_the_air = 0.0;
+    this->time_good_contacts = 0.0;
+    this->time_bad_contacts = 0.0;
+
+    this->first_time_force = true;
+
+    this->counter_force = 0;
 
 
     detect_contact();
@@ -240,6 +309,8 @@ class ENVIRONMENT : public RaisimGymEnv {
     // }
 
     this->time_counter = 0.0;
+    this->time_good_contacts = 0.0;
+    this->time_bad_contacts = 0.0;
 
     updateObservation();
 
@@ -268,12 +339,22 @@ class ENVIRONMENT : public RaisimGymEnv {
   // }
 
 
+template<typename T>
+inline void read_value_from_cfg_file(const Yaml::Node& cfg, const std::string & name, T & val){
+
+    // float dummy_val1 = cfg.dummy.template As<float>();
+    RSFATAL_IF(cfg[name].IsNone(), "Node " << name << " doesn't exist");
+    val = cfg[name].template As<T>();
+    std::cout << name << ": " << val << "\n";
+
+    return;
+}
 
 inline int detect_contact(void){
 
   // Initialize:
-  for(int ii=0; ii < this->foot_in_contact.size(); ii++){
-    this->foot_in_contact[ii] = 0;
+  for(int ii=0; ii < this->foot_in_contact_curr.size(); ii++){
+    this->foot_in_contact_curr[ii] = 0;
   }
 
   /// for all contacts on the robot, check ...
@@ -285,7 +366,7 @@ inline int detect_contact(void){
     for(int ii=0; ii < this->footIndices_mine.size(); ii++){
 
       if(this->footIndices_mine[ii] == contact.getlocalBodyIndex()){
-        this->foot_in_contact[ii] = 1;
+        this->foot_in_contact_curr[ii] = 1;
       }
 
     }
@@ -294,10 +375,10 @@ inline int detect_contact(void){
 
 
   int sum_contact = 0;
-  // std::cout << "this->foot_in_contact:\n";
-  for(int ii=0; ii < this->foot_in_contact.size(); ii++){
-    // std::cout << this->foot_in_contact[ii] << ", ";
-    sum_contact += this->foot_in_contact[ii];
+  // std::cout << "this->foot_in_contact_curr:\n";
+  for(int ii=0; ii < this->foot_in_contact_curr.size(); ii++){
+    // std::cout << this->foot_in_contact_curr[ii] << ", ";
+    sum_contact += this->foot_in_contact_curr[ii];
   }
   // std::cout << "\n";
 
@@ -308,7 +389,37 @@ inline int detect_contact(void){
 }
 
 
+inline void update_time_in_the_air(void){
 
+  int sum_contact = this->detect_contact(); // update this->foot_in_contact_curr
+
+  // Make sure that in the last time step the feel where also in the air. If not, return without increasing this->time_good_contacts
+  bool same_contacts = true;
+  for(int ii=0;ii<this->foot_in_contact_curr.size();ii++){
+    if(this->foot_in_contact_curr[ii] != this->foot_in_contact_last[ii]){ same_contacts = false; }
+  }
+
+  // Always update this->foot_in_contact_last
+  for(int ii=0;ii<this->foot_in_contact_last.size();ii++){
+    this->foot_in_contact_last[ii] = this->foot_in_contact_curr[ii];
+  }
+
+  if(!same_contacts){
+    this->time_bad_contacts += this->getControlTimeStep();
+    return;
+  }
+
+  // Only add to this->time_good_contacts if the FR leg is in the air and the FL one is touching the ground, or viceversa
+  if(this->foot_in_contact_curr[0] != this->foot_in_contact_curr[1]){
+    this->time_good_contacts += this->getControlTimeStep();
+  }
+  else{
+    this->time_bad_contacts += this->getControlTimeStep();
+  }
+
+  return;
+
+}
 
 
 
@@ -318,9 +429,9 @@ inline int detect_contact(void){
   inline float get_latest_rewards(void){
 
     // Reward velocity tracking:
-    float sigma_tracking = 0.25;
+    float sigma_tracking = 0.1;
     Eigen::Vector2d vel_body_lin_xy_des;
-    vel_body_lin_xy_des << 0.5, 0.0; // 2022-12-07-14-04-48 ~2900 epochs; action_std = 0.5 -> pretty stupid policy, just dragging along the floor ...
+    vel_body_lin_xy_des << 0.75, 0.0; // 2022-12-07-14-04-48 ~2900 epochs; action_std = 0.5 -> pretty stupid policy, just dragging along the floor ...
     
     // Past trials
     // vel_body_lin_xy_des << 1.0, 0.0; // 2022-12-07-09-57-32 ~1000 epochs, walks forward, but ridoculously small steps; action_std = 0.2;
@@ -345,9 +456,44 @@ inline int detect_contact(void){
 
     // 2022-12-09-12-26-50 -> ~1200, using CPG, dragging totally
 
+    // 2022-12-11-03-43-43 -> ~1400, after really changing a lot the reward function; still kind of dragging ...
+
+    // 2022-12-11-04-51-14 -> ~1300, FINALLY!!! 
+
+    // 2022-12-11-11-54-13 -> ~10,000 iters -> weird behaviors toward the end
+
+    // 2022-12-11-19-18-59 -> ~500
+
+    // 2022-12-12-09-31-44 -> ~500 iters -> not moving at all; using CPG
+
+    // 2022-12-12-10-19-37 -> ~500 iters -> not moving at all; using CPG
+
+    // 2022-12-12-10-59-50 -> ~1000 iters, running in place, promising, but actions too high, maybe retrain
+
+    // 2022-12-12-11-20-08 -> ~650, stays still....
+
+    // 2022-12-12-12-09-49 -> ~550, weird jump but kind of promising
+
+    // 2022-12-12-12-40-56 ~650, jumps and short task
+
+    // 2022-12-12-13-24-27 ~700 still kind of jumpy and short, testing ...
+
+    // 2022-12-12-14-08-29 ~550, stepping very fast in place...
+
+    // 2022-12-12-14-40-02 ~200, stepping in place, promising, not walking forward yet, this was COUPLED_NO_LAT_HIP
+
+    // 2022-12-12-15-14-24, ~500, stepping in place, maybe missing a push?
+
+    // 2022-12-12-15-58-27, ~350, now added the push, mich more promising; maybe try CPG afterards
+
+
+
+
+
     // Reward linear body velocity:
     float error_vel_lin_tracking = (vel_body_lin_xy_des-bodyLinearVel_.head(2)).squaredNorm();
-    rewards_.record("vel_body_tracking_error", exp(-error_vel_lin_tracking/sigma_tracking));
+    // rewards_.record("vel_body_tracking_error", exp(-error_vel_lin_tracking/sigma_tracking));
+    rewards_.record("vel_body_tracking_error", error_vel_lin_tracking);
 
     // Reward tracking angular velocity:
     float error_vel_ang_tracking = pow(0.0-bodyAngularVel_[2],2.0);
@@ -357,14 +503,25 @@ inline int detect_contact(void){
     float error_height_tracking = pow(0.25-gc_[2],2.0);
     rewards_.record("height_body_tracking_error", exp(-error_height_tracking/sigma_tracking));
 
+    // // Reward tracking yaw:
+    // float body_ang_pos_yaw = rot.e().row(2)[2];
+    // Eigen::Vector3d body_ang_pos_yaw = this->obDouble_(Eigen::seqN(3,1,3));
+    // std::cout << "body_ang_pos_yaw: " << body_ang_pos_yaw.transpose().format(this->clean_format) << "\n";
+    // float error_height_tracking = pow(0.25-gc_[2],2.0);
+    // rewards_.record("height_body_tracking_error", exp(-error_height_tracking/sigma_tracking));
+
     // Penalize torque:
-    rewards_.record("torque", go1->getGeneralizedForce().squaredNorm());
+    float torque = go1->getGeneralizedForce().squaredNorm(); // This gives the feedforward torque applied to all joints. The first 6 elements are zero.
+    // go1->getGeneralizedForce() -> This returns the generalized externally-applied feed-forward torque (in this case zero, as set in go1->setGeneralizedForce(Eigen::VectorXd::Zero(gvDim_));) PLUS the torque resulting from the PD controller
+    rewards_.record("torque", torque);
 
     // Penalize vertical velocity:
-    rewards_.record("vel_body_lin_z", pow(bodyLinearVel_[2],2.0));
+    float vel_body_lin_z = pow(bodyLinearVel_[2],2.0);
+    rewards_.record("vel_body_lin_z", vel_body_lin_z);
 
     // Penalize roll and pitch:
-    rewards_.record("vel_ang_xy", (bodyAngularVel_.head(2)).squaredNorm() );
+    float vel_ang_xy = (bodyAngularVel_.head(2)).squaredNorm();
+    rewards_.record("vel_ang_xy", vel_ang_xy);
 
     // amarco:
 
@@ -372,7 +529,8 @@ inline int detect_contact(void){
 
     // Penalize hip joints positions, they shouldn't be moving too much for walking on a flat floor
     Eigen::Vector4d pos_hips_des; pos_hips_des << 0.0136, -0.0118, 0.0105, -0.0102;
-    rewards_.record("pos_hips_des", (pos_hips_des-gc_(Eigen::seqN(7,4,3))).squaredNorm());
+    float pos_hips_des_err = (pos_hips_des-gc_(Eigen::seqN(7,4,3))).squaredNorm();
+    rewards_.record("pos_hips_des", pos_hips_des_err);
 
     // Eigen::VectorXd gc_tmp; gc_tmp << 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18;
     // std::cout << "gc_tmp(Eigen::seqN(7,4,3)): " << gc_tmp(Eigen::seqN(7,4,3)) << "\n";
@@ -383,26 +541,134 @@ inline int detect_contact(void){
     // rewards_.record("vel_hips_des", (vel_hips_des-gv_(this->seq_hips)).squaredNorm());
 
     // Penalize joint positions that are out of limits:
-    double pos_joint_off_limits_val = -(gc_.tail(12)-this->pos_joint_lim_lower).cwiseMin(0.0).sum();
-    pos_joint_off_limits_val += (gc_.tail(12)-this->pos_joint_lim_upper_).cwiseMax(0.0).sum();
+    float pos_joint_off_limits_val = -(gc_.tail(this->nJoints_)-this->pos_joint_lim_lower).cwiseMin(0.0).sum();
+    pos_joint_off_limits_val += (gc_.tail(this->nJoints_)-this->pos_joint_lim_upper_).cwiseMax(0.0).sum();
     rewards_.record("pos_joint_off_limits", pos_joint_off_limits_val);
     // cwiseMin(action_lim).cwiseMax(-action_lim);
 
     // Penalize jumps in consecutive actions:
-    rewards_.record("action_rate", (this->action_curr - this->action_last).squaredNorm());
+    float action_rate = (this->action_curr - this->action_last).squaredNorm();
+    rewards_.record("action_rate", action_rate);
     for(int ii; ii < this->action_last.size(); ii++){
       this->action_last[ii] = this->action_curr[ii];
     }
 
     // Reward when the FR is in contact but the FL is in the air, or viceversa:
-    int sum_contact = this->detect_contact();
-    this->time_in_the_air = 0.0;
-    if(this->foot_in_contact[0] != this->foot_in_contact[1]){
-      this->time_in_the_air = 0.002;
-    }
-    rewards_.record("time_in_the_air", this->time_in_the_air);
 
-    return rewards_.sum();
+    this->update_time_in_the_air();
+    // std::cout << "this->time_good_contacts: " << this->time_good_contacts << "\n";
+    rewards_.record("time_good_contacts", this->time_good_contacts);
+    rewards_.record("time_bad_contacts", this->time_bad_contacts);
+
+
+
+
+
+
+    // std::cout << "[in rewards] this->getControlTimeStep(): " << this->getControlTimeStep() << "\n";
+    // std::cout << "[in rewards] this->getSimulationTimeStep(): " << this->getSimulationTimeStep() << "\n";
+
+
+
+    // Penalize vibration:
+    if(this->first_time){
+      this->joint_vel_curr = gv_.tail(this->nJoints_);
+      this->joint_acc_curr.setZero(this->nJoints_); // Not needed; it's already zero, but left here for clarity
+      this->first_time = false;
+    }
+    else{
+      this->joint_acc_curr = (this->joint_vel_curr - this->joint_vel_last) / this->getControlTimeStep();
+    }
+    for(int ii; ii < this->joint_vel_last.size();ii++){
+      this->joint_vel_last[ii] = this->joint_vel_curr[ii];
+    }
+    float joint_acc_curr = this->joint_acc_curr.squaredNorm();
+    rewards_.record("joint_acc_curr", joint_acc_curr);
+
+
+    // std::cout << "error_vel_lin_tracking: " << error_vel_lin_tracking << "\n";
+    // std::cout << "error_vel_ang_tracking: " << error_vel_ang_tracking << "\n";
+    // std::cout << "error_height_tracking: " << error_height_tracking << "\n";
+    // std::cout << "torque: " << torque << "\n";
+    // std::cout << "vel_body_lin_z: " << vel_body_lin_z << "\n";
+    // std::cout << "vel_ang_xy: " << vel_ang_xy << "\n";
+    // std::cout << "pos_hips_des_err: " << pos_hips_des_err << "\n";
+    // std::cout << "pos_joint_off_limits_val: " << pos_joint_off_limits_val << "\n";
+    // std::cout << "action_rate: " << action_rate << "\n";
+    // std::cout << "sum_contact: " << sum_contact << "\n";
+    // std::cout << "time_in_the_air: " << time_in_the_air << "\n";
+    // std::cout << "joint_acc_curr: " << joint_acc_curr << "\n";
+
+
+    // print_if_bad("error_vel_lin_tracking", error_vel_lin_tracking);
+    // print_if_bad("error_vel_ang_tracking", error_vel_ang_tracking);
+    // print_if_bad("error_height_tracking", error_height_tracking);
+    // bool is_bad = print_if_bad("torque", torque);
+
+    // if(is_bad){
+    //   this->generalized_force = go1->getGeneralizedForce();
+    //   std::cout << "generalized_force: " << this->generalized_force << "\n";
+    //   std::cout << "this->pTarget12_: " << this->pTarget12_.transpose().format(this->clean_format) << "\n";
+
+    //   std::cout << "action curr: " << this->action_curr.transpose().format(this->clean_format) << "\n";
+
+    //   // Eigen::VectorXd pgain(this->gvDim_);
+    //   // Eigen::VectorXd dgain(this->gvDim_);
+    //   // go1->getPdGains(pgain,dgain);
+    //   // std::cout << "go1->kp_" << pgain << "\n";
+    //   // std::cout << "go1->kd_" << dgain << "\n";
+
+
+    //   // std::cout << "go1->uref_" << go1->uref_ << "\n";
+    //   // std::cout << "go1->qref_" << go1->qref_ << "\n";
+    //   // std::cout << "go1->diag_w" << go1->diag_w << "\n";
+    //   // std::cout << "go1->diag_w_dt_" << go1->diag_w_dt_ << "\n";
+    //   // std::cout << "go1->posErr_" << go1->posErr_ << "\n";
+    //   // std::cout << "go1->uErr_" << go1->uErr_ << "\n";
+
+    //   // if(std::isnan(this->pTarget12_) || std::isinf(this->pTarget12_)){
+
+    //   // }
+
+
+    //   std::cout << "rewards_.sum(): " << rewards_.sum() << "\n";
+
+    // }
+    // print_if_bad("vel_body_lin_z", vel_body_lin_z);
+    // print_if_bad("vel_ang_xy", vel_ang_xy);
+    // print_if_bad("pos_hips_des_err", pos_hips_des_err);
+    // print_if_bad("pos_joint_off_limits_val", pos_joint_off_limits_val);
+    // print_if_bad("action_rate", action_rate);
+    // print_if_bad("sum_contact", sum_contact);
+    // print_if_bad("time_in_the_air", time_in_the_air);
+    // print_if_bad("joint_acc_curr", joint_acc_curr);
+
+
+    float reward_total = rewards_.sum();
+
+    // NOTE: rewards_.record() checks for NaNs, but it doesn't check for infs
+    // RSFATAL_IF(std::isinf(reward_total), "reward_total is inf. Stopping ...");
+
+    return reward_total;
+  }
+
+  template<typename T>
+  inline bool print_if_bad(const std::string & var_name, const T & var){
+
+    bool is_bad = false;
+    if(std::isnan(var)){
+      RSFATAL_IF(std::isnan(var), "reward_total is NaN. Stopping ...");
+      std::cout << "Is NaN: " << var_name << ": " << var << "\n";
+      is_bad = true;
+    }
+
+    if(std::isinf(var)){
+      RSFATAL_IF(std::isinf(var), "reward_total is inf. Stopping ...");
+      std::cout << "Is Inf: " << var_name << ": " << var << "\n\n";
+      is_bad = true;
+    }
+
+    return is_bad;
   }
 
 
@@ -421,59 +687,99 @@ inline int detect_contact(void){
   // }
 
 
-  inline void parse_action(Eigen::Ref<Eigen::VectorXd> action_des){
+
+
+  inline void parse_action_standard(Eigen::Ref<Eigen::VectorXd> action_des){
+    assert(this->action_clipped.size() == 12);
+    action_des = this->action_clipped;
+    return;
+  }
+
+
+  inline void parse_action_coupled(Eigen::Ref<Eigen::VectorXd> action_des){
+
+    assert(this->action_clipped.size() == 6);
+
+    // std::cout << "[inside, before] action_des: " << action_des.transpose().format(this->clean_format) << "\n";
 
     // Couple:
     // Eigen::VectorXd action_des;
     // action_des.setZero(this->nJoints_);
-    action_des[0] = this->action_clipped[0];
+    action_des[0] = this->action_clipped[0] / (2.*this->action_lim) * 0.1;
     action_des[1] = this->action_clipped[1];
     action_des[2] = this->action_clipped[2];
 
-    action_des[9] = -this->action_clipped[0];
+    action_des[9] = -this->action_clipped[0] / (2.*this->action_lim) * 0.1;
     action_des[10] = this->action_clipped[1];
     action_des[11] = this->action_clipped[2];
 
-    action_des[3] = -this->action_clipped[3];
+    action_des[3] = -this->action_clipped[3] / (2.*this->action_lim) * 0.1;
     action_des[4] = this->action_clipped[4];
     action_des[5] = this->action_clipped[5];
 
-    action_des[6] = this->action_clipped[3];
+    action_des[6] = this->action_clipped[3] / (2.*this->action_lim) * 0.1;
     action_des[7] = this->action_clipped[4];
     action_des[8] = this->action_clipped[5];
 
+    // std::cout << "[inside, after] action_des: " << action_des.transpose().format(this->clean_format) << "\n";
+    // std::cout << "this->action_clipped: " << this->action_clipped.transpose().format(this->clean_format) << "\n";
 
-    // // Couple:
+    return;
+  }
+
+  inline void parse_action_coupled_no_lat_hip(Eigen::Ref<Eigen::VectorXd> action_des){
+
+    // std::cout << "[inside, before] action_des: " << action_des.transpose().format(this->clean_format) << "\n";
+
+    assert(this->action_clipped.size() == 4);
+
+    // Couple:
     // Eigen::VectorXd action_des;
     // action_des.setZero(this->nJoints_);
-    // // 0.0136, -0.0118, 0.0105, -0.0102;
-    // action_des[0] = 0.0; // By setting zero here, we'll be applying just the initial position as desired joint position
-    // action_des[1] = this->action_clipped[0];
-    // action_des[2] = this->action_clipped[1];
+    // 0.0136, -0.0118, 0.0105, -0.0102;
+    action_des[0] = 0.0; // By setting zero here, we'll be applying just the initial position as desired joint position
+    action_des[1] = this->action_clipped[0];
+    action_des[2] = this->action_clipped[1];
 
-    // action_des[9] = 0.0;
-    // action_des[10] = this->action_clipped[0];
-    // action_des[11] = this->action_clipped[1];
+    action_des[9] = 0.0;
+    action_des[10] = this->action_clipped[0];
+    action_des[11] = this->action_clipped[1];
 
-    // action_des[3] = 0.0;
-    // action_des[4] = this->action_clipped[2];
-    // action_des[5] = this->action_clipped[3];
+    action_des[3] = 0.0;
+    action_des[4] = this->action_clipped[2];
+    action_des[5] = this->action_clipped[3];
 
-    // action_des[6] = 0.0;
-    // action_des[7] = this->action_clipped[2];
-    // action_des[8] = this->action_clipped[3];
+    action_des[6] = 0.0;
+    action_des[7] = this->action_clipped[2];
+    action_des[8] = this->action_clipped[3];
+
+    // std::cout << "[inside, after] action_des: " << action_des.transpose().format(this->clean_format) << "\n";
+    // std::cout << "this->action_clipped: " << this->action_clipped.transpose().format(this->clean_format) << "\n";
 
     return;
   }
 
   inline void parse_action_cpg(Eigen::Ref<Eigen::VectorXd> action_des){
 
+    assert(this->action_clipped.size() == 4);
+
     double freq_FR_1, ampl_FR_1, freq_FR_2, ampl_FR_2;
 
-    freq_FR_1 = this->action_clipped[0];
+    // freq_FR_1 = abs(this->action_clipped[0]) / (this->action_lim) * 5.0; // max freq: 5 Hz
+    // freq_FR_2 = abs(this->action_clipped[2])  / (this->action_lim) * 5.0; // max freq: 5 Hz
+    // ampl_FR_1 = this->action_clipped[1] / (2.*this->action_lim) * 2.*M_PI;
+    // ampl_FR_2 = this->action_clipped[3] / (2.*this->action_lim) * 2.*M_PI;
+
+
+    freq_FR_1 = abs(this->action_clipped[0]);
+    freq_FR_2 = abs(this->action_clipped[2]);
     ampl_FR_1 = this->action_clipped[1];
-    freq_FR_2 = this->action_clipped[2];
     ampl_FR_2 = this->action_clipped[3];
+
+    // std::cout << "freq_FR_1: " << freq_FR_1 << " Hz\n";
+    // std::cout << "ampl_FR_1: " << ampl_FR_1 << " rad\n";
+    // std::cout << "freq_FR_2: " << freq_FR_2 << " Hz\n";
+    // std::cout << "ampl_FR_2: " << ampl_FR_2 << " rad\n";
 
     action_des[0] = 0.0; // By setting zero here, we'll be applying just the initial position as desired joint position
     action_des[1] = ampl_FR_1*sin(freq_FR_1*2.*M_PI*this->time_counter);
@@ -489,7 +795,11 @@ inline int detect_contact(void){
     action_des[7] = ampl_FR_1*sin(freq_FR_1*2.*M_PI*this->time_counter + M_PI);
     action_des[8] = ampl_FR_2*sin(freq_FR_2*2.*M_PI*this->time_counter + M_PI);
 
-    this->time_counter += 0.002;
+    this->time_counter += this->getControlTimeStep();
+
+    // std::cout << "[in parse_action_cpg] this->getControlTimeStep(): " << this->getControlTimeStep() << "\n";
+    // std::cout << "[in parse_action_cpg] this->getSimulationTimeStep(): " << this->getSimulationTimeStep() << "\n";
+
 
     return;
   }
@@ -497,6 +807,26 @@ inline int detect_contact(void){
 
   // amarco: original step function (replaced by the above function; it does exactly the same)
   float step(const Eigen::Ref<EigenVec>& action) final {
+
+
+    // Set external force:
+    // We need a velocity of 0.5 m/s, which implies that the required acceleration is 0.5 / 0.002 = 250.
+    // The robot's mass is about... 5kg? So, let's apply a force of 1000.0;
+    if(this->first_time_force == true){
+      Eigen::VectorXd external_force;
+      external_force.setZero(3);
+      // raisim::Vec<3> external_force;
+      // external_force << 1000.0,0.0,0.0;
+      external_force << 10.0,0.0,0.0; // Gentle push during 100 steps
+      go1->setExternalForce(go1->getBodyIdx("base"),external_force);
+      // The external force is applied for a single time step only. You have to apply the force for every time step if you want persistent force
+
+      if(this->counter_force > 100){
+        this->first_time_force = false;
+      }
+
+      this->counter_force += 1;
+    }
 
     // std::cout << "action.size(): " << action.size() << "\n";
 
@@ -511,68 +841,54 @@ inline int detect_contact(void){
       this->action_clipped[ii] = action[ii];
     }
 
-    // Clip the action:
-    this->action_clipped.cwiseMin(this->action_lim).cwiseMax(-this->action_lim);
-    // std::cout << "After:\n";
     // std::cout << "action: " << action.transpose().format(this->clean_format) << "\n";
+
+    // Clip the action:
+    // std::cout << "[before] this->action_clipped: " << this->action_clipped.transpose().format(this->clean_format) << "\n";
+    this->action_clipped.cwiseMin(this->action_lim).cwiseMax(-this->action_lim);
+    // std::cout << "[after] this->action_clipped: " << this->action_clipped.transpose().format(this->clean_format) << "\n";
+    // std::cout << "After:\n";
     // std::cout << "action curr: " << this->action_curr.transpose().format(this->clean_format) << "\n";
     // std::cout << "action clipped: " << this->action_clipped.transpose().format(this->clean_format) << "\n";
-
-    // Parse into desired position:
-
-
-
-
-
 
 
     Eigen::VectorXd action_des;
     action_des.setZero(this->nJoints_);
-    // std::cout << "action_des: " << action_des.transpose().format(this->clean_format) << "\n";
+    // std::cout << "[before] action_des: " << action_des.transpose().format(this->clean_format) << "\n";
+
+    if(this->which_action_parsing == STANDARD){
+      this->parse_action_standard(action_des);
+    }
+
+    if(this->which_action_parsing == COUPLED){
+      this->parse_action_coupled(action_des);
+    }
+
+    if(this->which_action_parsing == COUPLED_NO_LAT_HIP){
+      this->parse_action_coupled_no_lat_hip(action_des);
+    }
+
+    if(this->which_action_parsing == COUPLED_CPG){
+      this->parse_action_cpg(action_des);
+    }
+
+
     // this->parse_action(action_des); // Uses this->action_clipped
-    this->parse_action_cpg(action_des); // Uses this->action_clipped
-    // std::cout << "action_des: " << action_des.transpose().format(this->clean_format) << "\n";
+    // this->parse_action_cpg(action_des); // Uses this->action_clipped
+    // std::cout << "[after] action_des: " << action_des.transpose().format(this->clean_format) << "\n";
     
-
-
-
-
-
-    // // Couple:
-    // Eigen::VectorXd action_des;
-    // action_des.setZero(this->nJoints_);
-    // action_des[0] = this->action_clipped[0];
-    // action_des[1] = this->action_clipped[1];
-    // action_des[2] = this->action_clipped[2];
-
-    // action_des[9] = -this->action_clipped[0];
-    // action_des[10] = this->action_clipped[1];
-    // action_des[11] = this->action_clipped[2];
-
-    // action_des[3] = -this->action_clipped[3];
-    // action_des[4] = this->action_clipped[4];
-    // action_des[5] = this->action_clipped[5];
-
-    // action_des[6] = this->action_clipped[3];
-    // action_des[7] = this->action_clipped[4];
-    // action_des[8] = this->action_clipped[5];
-
-
-
-
-
-
-
-
-
 
     /// action scaling
     // pTarget12_ = action.cast<double>(); // original
     // pTarget12_ = this->action_clipped.cast<double>(); // amarco
     pTarget12_ = action_des.cast<double>(); // amarco
+    // std::cout << "pTarget12_: " << pTarget12_.transpose().format(this->clean_format) << "\n";
     pTarget12_ = pTarget12_.cwiseProduct(actionStd_); // amarco: element-wise product; https://eigen.tuxfamily.org/dox/group__TutorialArrayClass.html
+    // std::cout << "pTarget12_: " << pTarget12_.transpose().format(this->clean_format) << "\n";
     pTarget12_ += actionMean_;
+    // std::cout << "pTarget12_: " << pTarget12_.transpose().format(this->clean_format) << "\n";
     pTarget_.tail(nJoints_) = pTarget12_;
+    // std::cout << "pTarget_: " << pTarget_.transpose().format(this->clean_format) << "\n";
 
     // std::cout << "pTarget_: " << pTarget_.transpose().format(this->clean_format) << "\n";
     // std::cout << "vTarget_: " << vTarget_.transpose().format(this->clean_format) << "\n";
@@ -591,7 +907,7 @@ inline int detect_contact(void){
 
     for(int i=0; i< integration_steps_; i++){
       if(server_) server_->lockVisualizationServerMutex();
-      world_->integrate();
+      world_->integrate(); // https://raisim.com/sections/WorldSystem.html?highlight=integrate#_CPPv4N6raisim5World9integrateEv
       if(server_) server_->unlockVisualizationServerMutex();
     }
 
@@ -661,10 +977,20 @@ inline int detect_contact(void){
   // auto seq_vel_hips;
   double action_lim;
   Eigen::IOFormat clean_format;
-  std::vector<int> foot_in_contact;
+  std::vector<int> foot_in_contact_curr;
+  std::vector<int> foot_in_contact_last;
   std::vector<size_t> footIndices_mine;
-  double time_in_the_air;
+  double time_good_contacts;
+  double time_bad_contacts;
   double time_counter;
+  Eigen::VectorXd joint_vel_curr;
+  Eigen::VectorXd joint_acc_curr;
+  Eigen::VectorXd joint_vel_last;
+  bool first_time;
+  bool first_time_force;
+  VecDyn generalized_force;
+  int which_action_parsing;
+  int counter_force;
 
   /// these variables are not in use. They are placed to show you how to create a random number sampler.
   std::normal_distribution<double> normDist_;

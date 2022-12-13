@@ -96,10 +96,11 @@ def test():
 			the joint that corresponds to each index of the vector of desired joint positions
 	15) How can we expose the std that multiplies the actions to be a cfg parameter?
 		* I think the cfg file is NOT accessible from Environment.hpp
+	16) [DONE] Have a way to handle nan torque during training
 
 
 	TODO:
-	4) Have a way to handle nan torque during training
+	
 	7) Read the PPO paper and understand what's going on; also understand the google collab plots
 	8) Have an easy, systematic way of visualizing the joint space trajectories that is also compatible with the real robot. What tools are avaialble out there?
 		8.1) See if we can use google colab to plot stuff; probably...
