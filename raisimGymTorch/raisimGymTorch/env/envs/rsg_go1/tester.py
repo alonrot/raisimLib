@@ -10,6 +10,8 @@ import argparse
 
 # amarco:
 import pdb
+import numpy as np
+import matplotlib.pyplot as plt
 # python raisimGymTorch/env/envs/rsg_go1/tester.py --weight data/go1_locomotion/2022-11-11-08-31-33/full_800.pt
 # python raisimGymTorch/env/envs/rsg_go1/tester.py --weight data/go1_locomotion/2022-11-13-21-49-05/full_500.pt #not good
 
@@ -88,18 +90,24 @@ env.turn_on_visualization()
 time_sleep = cfg['environment']['control_dt']
 # time_sleep = cfg['environment']['simulation_dt']
 
-time2sleep_for_slow_visualization = 0.05
-# time2sleep_for_slow_visualization = 0.0
+# time2sleep_for_slow_visualization = 0.05
+time2sleep_for_slow_visualization = 0.0
 
-max_steps = 1000000
+max_steps = 1000
+# max_steps = 1000000
 # max_steps = 1000 ## 10 secs
 # max_steps = 600
 # dones = False
+tmp_yaw_angle = np.zeros((max_steps+1,1))
+vel_ang_body_plot = np.zeros((max_steps,3))
+ang_body_plot = np.zeros((max_steps,3))
 for step in range(max_steps):
     time.sleep(time2sleep_for_slow_visualization)
     obs = env.observe(False)
-    print("obs",obs)
+    # print("orientation: ",obs[0,1:4])
+    vel_ang_body_plot[step,:] = obs[0,20:23]
     action_ll = loaded_graph.architecture(torch.from_numpy(obs).cpu())
+    tmp_yaw_angle[step+1,0] = tmp_yaw_angle[step,0] + obs[0,21]*cfg['environment']['control_dt']
 
     # """
     # This is a proxy for the main functionalities of the step() function, in Environment.hpp
@@ -137,6 +145,31 @@ for step in range(max_steps):
         start_step_id = step + 1
         reward_ll_sum = 0.0
 
+
+
+
 env.turn_off_visualization()
 env.reset()
 print("Finished at the maximum visualization steps")
+
+
+
+hdl_fig, hdl_splots = plt.subplots(3,1)
+hdl_splots[0].plot(vel_ang_body_plot[:,0])
+hdl_splots[1].plot(vel_ang_body_plot[:,1])
+hdl_splots[2].plot(vel_ang_body_plot[:,2])
+
+ang_body_plot = np.cumsum(vel_ang_body_plot,axis=0)*cfg['environment']['control_dt']
+
+hdl_fig, hdl_splots = plt.subplots(3,1)
+hdl_splots[0].plot(ang_body_plot[:,0])
+hdl_splots[1].plot(ang_body_plot[:,1])
+hdl_splots[1].plot(tmp_yaw_angle)
+hdl_splots[2].plot(ang_body_plot[:,2])
+
+
+
+
+
+
+plt.show(block=True)

@@ -4,8 +4,8 @@ seed: 1
 environment:
   render: True
 # just testing commenting
-  num_envs: 100
-  # num_envs: 1
+  # num_envs: 100
+  num_envs: 1
   # eval_every_n: 200 # original
   eval_every_n: 50
   num_threads: 30
@@ -39,7 +39,7 @@ environment:
     time_good_contacts:
       coeff: 5.0
     height_body_tracking_error:
-      coeff: 1.0
+      coeff: 0.8
     vel_body_tracking_error:
       coeff: -50.0
     time_bad_contacts:
@@ -62,12 +62,22 @@ environment:
       # coeff: -2.5e-7
       coeff: -2.5e-5
       # coeff: -0.0
+    heading_error:
+      coeff: -0.5
 
   # amarco added
   P_gains_val: 40.0
   D_gains_val: 2.0
   action_std: 0.25
   action_lim: 1.0
+  # force_impulse_val: 28.0 # When applied during 0.002 seconds at each env.step()
+  force_impulse_val: 5.6 # When applied during 0.01 seconds at each env.step()
+  Nsteps_force_impulse: 100
+  height_body_desired: 0.32
+
+  action_parametrization: 1 # 0=STANDARD, 1=COUPLED, 2=COUPLED_NO_LAT_HIP, 3=COUPLED_CPG
+
+
 
 
 # # amarco

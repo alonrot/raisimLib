@@ -60,8 +60,18 @@ class ENVIRONMENT : public RaisimGymEnv {
     float action_std = 0.0;
     read_value_from_cfg_file(cfg,"action_std",action_std);
     read_value_from_cfg_file(cfg,"action_lim",this->action_lim);
+    
+    this->external_force.setZero(3);
+    double force_impulse_val = 0.0;
+    read_value_from_cfg_file(cfg,"force_impulse_val",force_impulse_val);
+    // this->external_force[0] = force_impulse_val;
+    this->external_force[1] = force_impulse_val;
+    std::cout << "external_force: " << this->external_force.transpose().format(this->clean_format) << "\n";
 
+    read_value_from_cfg_file(cfg,"Nsteps_force_impulse",this->Nsteps_force_impulse);
+    read_value_from_cfg_file(cfg,"height_body_desired",this->height_body_desired);
 
+    read_value_from_cfg_file(cfg,"action_parametrization",this->action_parametrization);
     
     /// get robot data
     gcDim_ = go1->getGeneralizedCoordinateDim();
@@ -133,25 +143,29 @@ class ENVIRONMENT : public RaisimGymEnv {
 
 
     // Select action parsing:
-    this->which_action_parsing = COUPLED;
-    // this->which_action_parsing = COUPLED_NO_LAT_HIP;
-    // this->which_action_parsing = COUPLED_CPG;
+    // this->action_parametrization = COUPLED;
+    // this->action_parametrization = COUPLED_NO_LAT_HIP;
+    // this->action_parametrization = COUPLED_CPG;
 
 
-    if(this->which_action_parsing == STANDARD){
+    if(this->action_parametrization == STANDARD){
       this->actionDim_ = nJoints_;
+      std::cout << "action_parametrization: STANDARD | dim_action: " << this->actionDim_ << "\n";
     }
 
-    if(this->which_action_parsing == COUPLED){
+    if(this->action_parametrization == COUPLED){
       this->actionDim_ = 6;
+      std::cout << "action_parametrization: COUPLED | dim_action: " << this->actionDim_ << "\n";
     }
 
-    if(this->which_action_parsing == COUPLED_NO_LAT_HIP){
+    if(this->action_parametrization == COUPLED_NO_LAT_HIP){
       this->actionDim_ = 4;
+      std::cout << "action_parametrization: COUPLED_NO_LAT_HIP | dim_action: " << this->actionDim_ << "\n";
     }
 
-    if(this->which_action_parsing == COUPLED_CPG){
+    if(this->action_parametrization == COUPLED_CPG){
       this->actionDim_ = 4;
+      std::cout << "action_parametrization: COUPLED_CPG | dim_action: " << this->actionDim_ << "\n";
     }
 
 
@@ -212,6 +226,10 @@ class ENVIRONMENT : public RaisimGymEnv {
     this->action_clipped.setZero(actionDim_);
     this->first_time = true;
 
+
+
+
+
     // amarco: action clipping
     // Actions are desired positions, measured in radians.
     // <go1_const.h>
@@ -231,6 +249,7 @@ class ENVIRONMENT : public RaisimGymEnv {
     this->joint_vel_curr.setZero(this->nJoints_);
     this->joint_vel_last.setZero(this->nJoints_);
     this->joint_acc_curr.setZero(this->nJoints_);
+    this->first_time = true;
 
 
 
@@ -264,9 +283,13 @@ class ENVIRONMENT : public RaisimGymEnv {
     this->time_good_contacts = 0.0;
     this->time_bad_contacts = 0.0;
 
-    this->first_time_force = true;
-
     this->counter_force = 0;
+
+    this->apply_impulse = true;
+
+    this->yaw_cum = 0.0;
+
+
 
 
     detect_contact();
@@ -311,6 +334,15 @@ class ENVIRONMENT : public RaisimGymEnv {
     this->time_counter = 0.0;
     this->time_good_contacts = 0.0;
     this->time_bad_contacts = 0.0;
+    this->yaw_cum = 0.0;
+
+    this->joint_vel_curr.setZero(this->nJoints_);
+    this->joint_vel_last.setZero(this->nJoints_);
+    this->joint_acc_curr.setZero(this->nJoints_);
+
+    this->apply_impulse = true;
+    this->counter_force = 0;
+
 
     updateObservation();
 
@@ -360,6 +392,7 @@ inline int detect_contact(void){
   /// for all contacts on the robot, check ...
   for(auto& contact: go1->getContacts()) {
     
+    // TODO: What do the mean by "contact is internal"? Contact of the joints with themselves or with other joints?
     if (contact.skip())
       continue; /// if the contact is internal, one contact point is set to 'skip'
     
@@ -431,7 +464,8 @@ inline void update_time_in_the_air(void){
     // Reward velocity tracking:
     float sigma_tracking = 0.1;
     Eigen::Vector2d vel_body_lin_xy_des;
-    vel_body_lin_xy_des << 0.75, 0.0; // 2022-12-07-14-04-48 ~2900 epochs; action_std = 0.5 -> pretty stupid policy, just dragging along the floor ...
+    // vel_body_lin_xy_des << 0.75, 0.0; // 2022-12-07-14-04-48 ~2900 epochs; action_std = 0.5 -> pretty stupid policy, just dragging along the floor ...
+    vel_body_lin_xy_des << 0.25, 0.0; // 2022-12-07-14-04-48 ~2900 epochs; action_std = 0.5 -> pretty stupid policy, just dragging along the floor ...
     
     // Past trials
     // vel_body_lin_xy_des << 1.0, 0.0; // 2022-12-07-09-57-32 ~1000 epochs, walks forward, but ridoculously small steps; action_std = 0.2;
@@ -484,10 +518,21 @@ inline void update_time_in_the_air(void){
 
     // 2022-12-12-15-14-24, ~500, stepping in place, maybe missing a push?
 
-    // 2022-12-12-15-58-27, ~350, now added the push, mich more promising; maybe try CPG afterards
+    // 2022-12-12-15-58-27, ~350, now added the push, mich more promising
 
+    // 2022-12-12-16-54-52, ~600 (+350), retraining of the above (2022-12-12-15-58-27); very promising. 
+    // (Environment.hpp was changed after this expermient; see below)
 
+    // 2022-12-12-18-21-55: ~1350, I changed the code to a slightly larger impulse and changed the forward velocity to 0.25
 
+    // 2022-12-12-19-33-35: ~1450, walks!! in circles though... -> Using COUPLED
+    //                      ~1750, I stopped it here. Walks in circles, but a bit worse than the previous policies
+
+    // 2022-12-12-22-29-34, ~1350, stepping in place
+
+    // 2022-12-12-23-36-07, ~900, doesn't move!
+
+    // 2022-12-13-00-44-57, ~1350, stepping in place, not good... seems as if the force didnt' have any effect
 
 
     // Reward linear body velocity:
@@ -500,7 +545,7 @@ inline void update_time_in_the_air(void){
     rewards_.record("vel_ang_tracking_error", exp(-error_vel_ang_tracking/sigma_tracking));
 
     // Reward tracking robot height:
-    float error_height_tracking = pow(0.25-gc_[2],2.0);
+    float error_height_tracking = pow(0.32-gc_[2],2.0);
     rewards_.record("height_body_tracking_error", exp(-error_height_tracking/sigma_tracking));
 
     // // Reward tracking yaw:
@@ -561,7 +606,11 @@ inline void update_time_in_the_air(void){
     rewards_.record("time_bad_contacts", this->time_bad_contacts);
 
 
-
+    if(this->action_parametrization == STANDARD || this->action_parametrization == COUPLED){
+      // In these two cases, the lateral hip joint is part of the action space
+      this->update_yaw();
+      rewards_.record("heading_error", pow(0.0-this->yaw_cum,2.0));
+    }
 
 
 
@@ -651,6 +700,15 @@ inline void update_time_in_the_air(void){
 
     return reward_total;
   }
+
+
+  inline void update_yaw(void){
+    // NOTE: Ideally, this comes from IMUs
+    this->yaw_cum += this->bodyAngularVel_[1] * this->control_dt_;
+    // std::cout << "this->yaw_cum: " << this->yaw_cum << "\n";
+  }
+
+
 
   template<typename T>
   inline bool print_if_bad(const std::string & var_name, const T & var){
@@ -810,23 +868,29 @@ inline void update_time_in_the_air(void){
 
 
     // Set external force:
-    // We need a velocity of 0.5 m/s, which implies that the required acceleration is 0.5 / 0.002 = 250.
-    // The robot's mass is about... 5kg? So, let's apply a force of 1000.0;
-    if(this->first_time_force == true){
-      Eigen::VectorXd external_force;
-      external_force.setZero(3);
-      // raisim::Vec<3> external_force;
-      // external_force << 1000.0,0.0,0.0;
-      external_force << 10.0,0.0,0.0; // Gentle push during 100 steps
-      go1->setExternalForce(go1->getBodyIdx("base"),external_force);
-      // The external force is applied for a single time step only. You have to apply the force for every time step if you want persistent force
-
-      if(this->counter_force > 100){
-        this->first_time_force = false;
-      }
-
+    // We need a velocity of 0.5 m/s, which implies that the required acceleration is 0.5 / 0.002 = 250. (0.5 / 0.01 = 50; force of 560)
+    // The robot's mass is about ~11.2kg. So, let's apply a force of 2800.0;
+    // Gentle push during this->Nsteps_force_impulse steps
+    if(this->counter_force < this->Nsteps_force_impulse){
       this->counter_force += 1;
+      // std::cout << "increasing force counter; this->counter_force = " << this->counter_force << "\n";
     }
+    else if(this->apply_impulse){ this->apply_impulse = false; }
+
+
+
+
+    // if(this->first_time_force == true){
+
+    //   go1->setExternalForce(go1->getBodyIdx("base"),this->external_force); // https://raisim.com/sections/ArticulatedSystem.html?highlight=external%20force#_CPPv4N6raisim17ArticulatedSystem16setExternalForceE6size_tRK3VecIXL3EEE
+
+    //   // The external force is applied for a single time step only. You have to apply the force for every time step if you want persistent force
+    //   if(this->counter_force > this->Nsteps_force_impulse){
+    //     this->first_time_force = false;
+    //   }
+
+    //   this->counter_force += 1;
+    // }
 
     // std::cout << "action.size(): " << action.size() << "\n";
 
@@ -856,19 +920,19 @@ inline void update_time_in_the_air(void){
     action_des.setZero(this->nJoints_);
     // std::cout << "[before] action_des: " << action_des.transpose().format(this->clean_format) << "\n";
 
-    if(this->which_action_parsing == STANDARD){
+    if(this->action_parametrization == STANDARD){
       this->parse_action_standard(action_des);
     }
 
-    if(this->which_action_parsing == COUPLED){
+    if(this->action_parametrization == COUPLED){
       this->parse_action_coupled(action_des);
     }
 
-    if(this->which_action_parsing == COUPLED_NO_LAT_HIP){
+    if(this->action_parametrization == COUPLED_NO_LAT_HIP){
       this->parse_action_coupled_no_lat_hip(action_des);
     }
 
-    if(this->which_action_parsing == COUPLED_CPG){
+    if(this->action_parametrization == COUPLED_CPG){
       this->parse_action_cpg(action_des);
     }
 
@@ -907,6 +971,7 @@ inline void update_time_in_the_air(void){
 
     for(int i=0; i< integration_steps_; i++){
       if(server_) server_->lockVisualizationServerMutex();
+      if(this->apply_impulse){ go1->setExternalForce(go1->getBodyIdx("base"),this->external_force); } // https://raisim.com/sections/ArticulatedSystem.html?highlight=external%20force#_CPPv4N6raisim17ArticulatedSystem16setExternalForceE6size_tRK3VecIXL3EEE
       world_->integrate(); // https://raisim.com/sections/WorldSystem.html?highlight=integrate#_CPPv4N6raisim5World9integrateEv
       if(server_) server_->unlockVisualizationServerMutex();
     }
@@ -987,10 +1052,15 @@ inline void update_time_in_the_air(void){
   Eigen::VectorXd joint_acc_curr;
   Eigen::VectorXd joint_vel_last;
   bool first_time;
-  bool first_time_force;
   VecDyn generalized_force;
-  int which_action_parsing;
+  int action_parametrization;
   int counter_force;
+  int Nsteps_force_impulse;
+  float height_body_desired;
+  Eigen::VectorXd external_force;
+  double yaw_cum;
+  bool apply_impulse;
+
 
   /// these variables are not in use. They are placed to show you how to create a random number sampler.
   std::normal_distribution<double> normDist_;
